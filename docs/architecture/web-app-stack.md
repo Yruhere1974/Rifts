@@ -8,19 +8,19 @@ The application should have an authoritative server, a shared deterministic rule
 
 ## Recommended Stack
 
-| Layer | Recommendation | Reason |
-|---|---|---|
-| Language | TypeScript | Shared types between rules, server, content, and client will reduce integration mistakes. |
-| Frontend | React + Vite | Fast iteration and a strong component model without unnecessary framework weight for a game-heavy prototype. |
-| Board and map rendering | PixiJS | Good fit for interactive 2D board surfaces, map tiles, fog of war, tokens, dice, markers, and tabletop-style motion. |
-| UI panels | React components | Best fit for personal consoles, card hands, dice trays, bag controls, team resources, project trees, and modals. |
-| Multiplayer server | Colyseus | Provides authoritative rooms, real-time state synchronization, player sessions, and room-based game structure. |
-| Rules engine | Custom pure TypeScript package | The game needs a custom engine/plugin architecture more than a generic web framework. |
-| Database | PostgreSQL | Reliable persistence for users, campaigns, save states, mission history, progression, and content metadata. |
-| ORM/query layer | Drizzle ORM | Type-safe, SQL-friendly, lightweight, and suitable for a custom server architecture. |
-| Validation | Zod | Useful for validating moves, scenario content, cards, upgrades, server messages, and saved game state. |
-| Unit/simulation testing | Vitest | Fast TypeScript testing for rules, reducers, RNG behavior, and balance simulations. |
-| Browser testing | Playwright | Good for testing multiplayer flows, UI behavior, and regressions across browser viewports. |
+| Layer                   | Recommendation                 | Reason                                                                                                               |
+| ----------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Language                | TypeScript                     | Shared types between rules, server, content, and client will reduce integration mistakes.                            |
+| Frontend                | React + Vite                   | Fast iteration and a strong component model without unnecessary framework weight for a game-heavy prototype.         |
+| Board and map rendering | PixiJS                         | Good fit for interactive 2D board surfaces, map tiles, fog of war, tokens, dice, markers, and tabletop-style motion. |
+| UI panels               | React components               | Best fit for personal consoles, card hands, dice trays, bag controls, team resources, project trees, and modals.     |
+| Multiplayer server      | Colyseus                       | Provides authoritative rooms, real-time state synchronization, player sessions, and room-based game structure.       |
+| Rules engine            | Custom pure TypeScript package | The game needs a custom engine/plugin architecture more than a generic web framework.                                |
+| Database                | PostgreSQL                     | Reliable persistence for users, campaigns, save states, mission history, progression, and content metadata.          |
+| ORM/query layer         | Drizzle ORM                    | Type-safe, SQL-friendly, lightweight, and suitable for a custom server architecture.                                 |
+| Validation              | Zod                            | Useful for validating moves, scenario content, cards, upgrades, server messages, and saved game state.               |
+| Unit/simulation testing | Vitest                         | Fast TypeScript testing for rules, reducers, RNG behavior, and balance simulations.                                  |
+| Browser testing         | Playwright                     | Good for testing multiplayer flows, UI behavior, and regressions across browser viewports.                           |
 
 ## Why This Stack Fits The Game
 

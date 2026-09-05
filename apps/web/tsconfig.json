@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "jsx": "react-jsx",
+    "noEmit": false,
+    "outDir": "dist"
+  },
+  "include": ["src", "vite.config.ts"],
+  "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/rules" },
+    { "path": "../../packages/content" }
+  ]
+}

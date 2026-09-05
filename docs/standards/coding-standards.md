@@ -53,8 +53,18 @@ Example:
 ```ts
 type GameEvent =
   | { type: "MOVE"; actorId: PlayerId; destinationId: LocationId }
-  | { type: "INVESTIGATE"; actorId: PlayerId; targetId: EntityId; knowledge: number }
-  | { type: "CONTRIBUTE"; actorId: PlayerId; projectId: ProjectId; progress: number };
+  | {
+      type: "INVESTIGATE";
+      actorId: PlayerId;
+      targetId: EntityId;
+      knowledge: number;
+    }
+  | {
+      type: "CONTRIBUTE";
+      actorId: PlayerId;
+      projectId: ProjectId;
+      progress: number;
+    };
 ```
 
 ## Linting And Formatting

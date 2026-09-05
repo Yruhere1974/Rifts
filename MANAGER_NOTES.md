@@ -4,7 +4,7 @@
 
 The Rifts repository has been initialized with project ground truth for the cooperative asymmetric board game web application.
 
-This repo is currently in discovery and architecture setup. No application code has been scaffolded yet.
+This repo now has a verified TypeScript monorepo infrastructure scaffold. Gameplay implementation is still intentionally minimal.
 
 ## Project Intent
 
@@ -58,25 +58,22 @@ Player engine action -> universal game event -> shared world reducer
 
 ## Recommended Next Click
 
-Create the initial monorepo scaffold and implement the pure rules package skeleton:
+Build the first real v0.1 rules loop:
 
-- workspace package setup
-- strict TypeScript config
-- lint/format/test scripts
-- base shared ID types
-- universal event types
-- initial game state shape
-- first reducer tests
-
-This should happen before building the PixiJS board or Colyseus room.
+- define the first mission map model
+- define four prototype characters, one per engine family
+- expand universal events beyond the initial `MOVE`, `ACQUIRE`, and `CONTRIBUTE`
+- add hidden-information filtering tests
+- add the first Colyseus room integration test
+- connect the web client to the server room
 
 ## In Flight
 
-- No implementation code exists yet.
-- No deployment config exists yet.
-- No database schema exists yet.
-- No CI workflow exists yet.
+- Rules are skeletal and only cover initial universal event reducers.
+- Server room exists but is not yet connected to the web client.
+- Database schema is skeletal and has no migrations yet.
+- CI workflow exists but has not yet been proven by a remote GitHub run.
 
 ## Handoff
 
-Ratcheted project concept, stack decision, and coding standards into Rifts documentation.
+Ratcheted project concept, stack decision, coding standards, and verified monorepo infrastructure into Rifts.

@@ -1,0 +1,20 @@
+{
+  "name": "@rifts/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@rifts/content": "0.1.0",
+    "@rifts/rules": "0.1.0",
+    "@rifts/shared": "0.1.0",
+    "@colyseus/core": "^0.18.10",
+    "@colyseus/schema": "^5.0.27",
+    "@colyseus/ws-transport": "^0.18.2",
+    "tsx": "^4.20.5",
+    "zod": "^4.1.12"
+  }
+}

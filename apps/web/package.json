@@ -1,0 +1,25 @@
+{
+  "name": "@rifts/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "dev": "vite",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@rifts/content": "0.1.0",
+    "@rifts/rules": "0.1.0",
+    "@rifts/shared": "0.1.0",
+    "@vitejs/plugin-react": "^5.0.2",
+    "pixi.js": "^8.13.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "vite": "^7.1.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9"
+  }
+}

@@ -6,6 +6,7 @@ import {
   Check,
   ChevronRight,
   CircleHelp,
+  Compass,
   Diamond,
   Flag,
   HandHelping,
@@ -34,6 +35,7 @@ import { BoardCanvas } from "./BoardCanvas.js";
 import { EngineConsole, identities } from "./EngineConsole.js";
 import { useMission } from "./useMission.js";
 import { useModalFocus } from "./useModalFocus.js";
+import { Tutorial } from "./Tutorial.js";
 
 const seats: Seat[] = ["soldier", "mage", "scout", "operator"];
 const locations = [
@@ -97,6 +99,7 @@ export function App() {
   const [history, setHistory] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [tutorial, setTutorial] = useState(false);
   useModalFocus(
     !view
       ? "briefing"
@@ -170,6 +173,18 @@ export function App() {
           <strong>Dimensional Stabilizer</strong>
         </div>
         <div className="header-tools">
+          {view && game.mode === "practice" && (
+            <button
+              className="icon-button"
+              aria-label={tutorial ? "Pause tutorial" : "Resume tutorial"}
+              data-tutorial-toggle
+              title={tutorial ? "Pause tutorial" : "Resume tutorial"}
+              aria-pressed={tutorial}
+              onClick={() => setTutorial(!tutorial)}
+            >
+              <Compass size={19} />
+            </button>
+          )}
           {game.roomId && (
             <button
               className="room-code"
@@ -206,6 +221,19 @@ export function App() {
           )}
         </div>
       </header>
+      {view && game.mode === "practice" && (
+        <Tutorial
+          key={game.roomId}
+          view={view}
+          active={tutorial}
+          onPause={() => {
+            document
+              .querySelector<HTMLElement>("[data-tutorial-toggle]")
+              ?.focus();
+            setTutorial(false);
+          }}
+        />
+      )}
       {view &&
         game.mode === "team" &&
         (!game.started || game.onlineSeats.length < 4) && (
@@ -652,6 +680,18 @@ export function App() {
       </footer>
       {view && (
         <nav className="mobile-commandbar" aria-label="Field navigation">
+          {tutorial && game.mode === "practice" && (
+            <button
+              onClick={() =>
+                document
+                  .querySelector(".tutorial-band")
+                  ?.scrollIntoView({ block: "start" })
+              }
+            >
+              <Compass size={18} />
+              Training
+            </button>
+          )}
           <button
             onClick={() =>
               document
@@ -789,6 +829,16 @@ export function App() {
                     </label>
                   </div>
                 )}
+                {lobbyMode === "practice" && (
+                  <label className="tutorial-option">
+                    <input
+                      type="checkbox"
+                      checked={tutorial}
+                      onChange={(event) => setTutorial(event.target.checked)}
+                    />
+                    Guided tutorial / learn all four specialists
+                  </label>
+                )}
                 <button
                   className="primary-button"
                   disabled={game.status === "connecting"}
@@ -802,7 +852,7 @@ export function App() {
                     setHistory(false);
                     void game.connect(
                       lobbyMode,
-                      lobbySeat,
+                      lobbyMode === "practice" ? "soldier" : lobbySeat,
                       lobbyMode === "team"
                         ? invite.trim() || undefined
                         : undefined,
@@ -956,6 +1006,13 @@ export function App() {
                 ? "Four different ways of playing. One shared victory."
                 : "The team's remaining capability could not contain the instability."}
             </p>
+            {tutorial && game.mode === "practice" && (
+              <p>
+                {view.phase === "won"
+                  ? "Field training complete. Your next deployment can be an unguided solo table or a cooperative table with one specialist per player."
+                  : "Training uses the real stakes. Deploy again to retry the guide: share two readings, restore the relay, and reserve Power for stabilization."}
+              </p>
+            )}
             <div className="result-crew">
               {view.players.map((p) => (
                 <div key={p.seat}>

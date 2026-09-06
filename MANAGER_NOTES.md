@@ -68,11 +68,13 @@ Run an unscripted four-person playtest. Assess whether the engines feel differen
 
 Current mission constants: 24 stabilization, 12 instability loss, six-round deadline, 1 Power per rift contribution, relay costs 2 Power and doubles output, blind work adds 5 instability, Operator priming adds 1 output. These are authored prototype numbers, not a redesign of the concept constitution.
 
-Verification covers 18 unit tests and six browser/network tests, including a four-browser victory, solo-table victory/loss, wire privacy, reserved-seat rejoining, shared-cost races, and desktop/mobile screenshot/canvas checks. The separate critical reviewer found no remaining concrete blocker after the fixes recorded in the review document. The full repository check is the release gate; do not infer human enjoyment or final balance from automation.
+Verification covers 18 unit tests and seven browser/network tests, including a four-browser victory, guided solo-table victory, tutorial pause/resume/reset and keyboard focus, solo loss, wire privacy, reserved-seat rejoining, shared-cost races, and desktop/mobile screenshot/canvas checks. The separate critical reviewer found no remaining concrete blocker after review fixes, including stricter lesson completion and tutorial focus restoration. The full repository check is the release gate; do not infer human enjoyment or final balance from automation.
 
 Last local verification (2026-09-06): `npm run check` passed end to end; `npm audit --audit-level=high` reported zero vulnerabilities; `git diff --check` passed. Both the web URL and Colyseus health endpoint responded successfully.
 
 ## In Flight
+
+- Added an optional 12-lesson solo tutorial using the existing filtered view and public action log; no rule, server, or hidden-state changes. Start via the lobby checkbox; pause/resume via the header compass. Includes real-state completion checks, back/skip, control targeting, mobile Training navigation, and resolution feedback. A new table resets the guide. Guided victory and mobile lifecycle are covered by Playwright. No deployment or push authorized.
 
 - Human playtesting and balance calibration remain outstanding.
 - Rooms are ephemeral; a restart or all players leaving loses the match.

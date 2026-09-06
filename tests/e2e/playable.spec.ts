@@ -1,9 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function deploy(page: Page) {
+async function deploy(page: Page, tutorial = false) {
   await page.goto("/");
+  if (tutorial)
+    await page.getByRole("checkbox", { name: "Guided tutorial" }).check();
   await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
   await expect(page.locator(".die")).toHaveCount(5);
+}
+async function nextLesson(page: Page) {
+  await expect(page.locator(".tutorial-status")).toContainText(
+    "Lesson complete",
+  );
+  await page.getByRole("button", { name: "Next lesson" }).click();
 }
 async function seat(page: Page, name: string) {
   await page
@@ -36,23 +44,35 @@ test("four engines complete a cooperative mission through the interface", async 
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await deploy(page);
+  await deploy(page, true);
+  await expect(
+    page.getByRole("button", { name: "Next lesson" }),
+  ).toBeDisabled();
   await page.getByRole("button", { name: "Share reading with team" }).click();
+  await nextLesson(page);
   await page.locator(".die").first().click();
   await commit(page, "Contribute");
   await expect(page.locator(".location-facts")).toContainText(
     "Shield suppressed",
   );
+  await nextLesson(page);
+  await page.getByRole("button", { name: "Show me where" }).click();
+  await expect(
+    page.getByRole("button", { name: "Unclaimed power core" }),
+  ).toBeFocused();
   await donate(page);
+  await nextLesson(page);
   await seat(page, "Wayfinder");
   await page.getByRole("button", { name: "Share reading with team" }).click();
   await expect(page.locator(".location-facts")).toContainText(
     "Safe frequency known",
   );
+  await nextLesson(page);
   await page.getByRole("button", { name: "Hold capability" }).click();
   await expect(
     page.getByRole("button", { name: "Capability held" }),
   ).toBeVisible();
+  await nextLesson(page);
   await seat(page, "Operator");
   await page.getByRole("button", { name: "The breach", exact: true }).click();
   await page.locator(".placement-marker").first().click();
@@ -64,6 +84,7 @@ test("four engines complete a cooperative mission through the interface", async 
   await expect(page.locator(".assist-request")).toContainText(
     "Operator needs support",
   );
+  await nextLesson(page);
   await seat(page, "Wayfinder");
   await page.getByRole("button", { name: "Exploit Opening card" }).click();
   await page.getByRole("button", { name: "Assist", exact: true }).click();
@@ -73,6 +94,7 @@ test("four engines complete a cooperative mission through the interface", async 
   await expect(
     page.getByRole("button", { name: "Exploit Opening card" }),
   ).toHaveCount(0);
+  await nextLesson(page);
   await seat(page, "Operator");
   await page.locator(".placement-marker").first().click();
   await page.getByRole("button", { name: "Contribute", exact: true }).click();
@@ -81,6 +103,7 @@ test("four engines complete a cooperative mission through the interface", async 
   );
   await commit(page, "Contribute");
   await expect(page.locator(".objective-counter strong")).toContainText("8");
+  await nextLesson(page);
   await seat(page, "Pathfinder");
   for (
     let i = 0;
@@ -95,10 +118,12 @@ test("four engines complete a cooperative mission through the interface", async 
   await expect(
     page.getByRole("button", { name: "Draw from bag" }),
   ).toBeDisabled();
+  await nextLesson(page);
   await page.locator(".bag-token:not(.hazard)").first().click();
   await commit(page, "Move");
   await page.locator(".bag-token:not(.hazard)").first().click();
   await commit(page, "Contribute");
+  await nextLesson(page);
   await seat(page, "Wayfinder");
   await donate(page);
   await page
@@ -115,6 +140,7 @@ test("four engines complete a cooperative mission through the interface", async 
     .first()
     .click();
   await commit(page, "Contribute");
+  await nextLesson(page);
   await seat(page, "Pathfinder");
   await donate(page);
   await seat(page, "Operator");
@@ -132,7 +158,68 @@ test("four engines complete a cooperative mission through the interface", async 
   await expect(
     page.getByRole("heading", { name: "Greyhaven holds." }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Guided tutorial" }),
+  ).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("tutorial can pause, resume, skip and restart on a new mobile table", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await deploy(page, true);
+  await page.getByRole("button", { name: "Show me where" }).click();
+  await expect(
+    page.getByRole("button", { name: "Share reading with team" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Skip lesson" }).click();
+  await expect(page.locator(".tutorial-copy h2")).toHaveText(
+    "Commit a die to the relay",
+  );
+  await page
+    .locator(".tutorial-band")
+    .getByRole("button", { name: "Pause tutorial" })
+    .click();
+  await expect(page.locator(".tutorial-band")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Resume tutorial" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Resume tutorial" }).click();
+  await expect(page.locator(".tutorial-copy h2")).toHaveText(
+    "Commit a die to the relay",
+  );
+  await page.getByRole("button", { name: "Previous lesson" }).click();
+  await expect(page.locator(".tutorial-copy h2")).toHaveText(
+    "One crisis, four perspectives",
+  );
+  await page.getByRole("button", { name: "Training", exact: true }).click();
+  const navRows = await page
+    .locator(".mobile-commandbar button")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => button.getBoundingClientRect().top),
+    );
+  expect(new Set(navRows).size).toBe(1);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/tutorial-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({
+    path: "test-results/tutorial-desktop.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Skip lesson" }).click();
+  await page.getByRole("button", { name: "Leave table" }).click();
+  await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+  await expect(page.locator(".tutorial-copy h2")).toHaveText(
+    "One crisis, four perspectives",
+  );
 });
 
 test("rounds, personal upgrades, and loss resolve without a turn lock", async ({

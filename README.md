@@ -25,6 +25,8 @@ Choose **Solo table** to explore all four seats, or **Cooperative table** to cre
 
 ## Play
 
+The **?** beside each engine heading opens that specialist's rules reference: components, effect values, restrictions, cooperation examples, and the core tradeoff. The reference's specialist selector lets you inspect teammates' public rules without changing your seat. Expand **Shared actions and team rounds** for the common rules. The reference does not pause the match or reveal private state.
+
 For a first game, choose **Solo table**, check **Guided tutorial / learn all four specialists**, then **Deploy to Greyhaven**. Twelve lessons guide real actions through a shared victory. A yellow pulsing outline marks the expected control, starting with the correct specialist when necessary; reduced-motion settings use a steady outline. **Show me where** scrolls to and focuses that control; the compass in the header pauses or resumes the guide. On mobile, **Training** returns to the current lesson. You can revisit or skip lessons without altering the match. Tutorial progress lasts for the current table, not across reloads.
 
 Select a location on the board. Select dice, cards, banked tokens, or placement markers, then choose a shared action. The commitment preview shows the authoritative rule's cost and effect. Components are not consumed until commitment.

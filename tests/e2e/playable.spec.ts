@@ -270,6 +270,79 @@ test("tutorial highlights the expected specialist and Hold capability", async ({
   );
 });
 
+test("specialist rule references explain each engine without changing seats", async ({
+  page,
+}) => {
+  await deploy(page);
+  const clues = [
+    ["Vanguard", "Engage requires 4+"],
+    ["Wayfinder", "No other two-card combination is valid"],
+    ["Pathfinder", "Bank before spending"],
+    ["Operator", "Every module accepts only one placement per round"],
+  ];
+  for (const [name, rule] of clues) {
+    await seat(page, name!);
+    const trigger = page.getByRole("button", {
+      name: `${name} rules reference`,
+    });
+    await trigger.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText(rule!);
+    await expect(
+      dialog.getByRole("heading", { name: "Your place in the team" }),
+    ).toBeVisible();
+    await expect(dialog).toContainText("Cooperation example");
+    await dialog
+      .getByText("Shared actions and team rounds", { exact: true })
+      .click();
+    await expect(dialog).toContainText(
+      "Opening this reference does not pause the other players",
+    );
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  }
+  await seat(page, "Vanguard");
+  const before = await page.locator(".event-ribbon p").textContent();
+  await page.getByRole("button", { name: "Vanguard rules reference" }).click();
+  await page.getByLabel("Specialist reference").selectOption("mage");
+  await expect(
+    page.getByRole("heading", { name: "Wayfinder rules", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".engine-heading .eyebrow")).toContainText(
+    "Vanguard",
+  );
+  await expect(page.locator(".die")).toHaveCount(5);
+  await expect(page.locator(".event-ribbon p")).toHaveText(before!);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.getByLabel("Specialist reference").selectOption("operator");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(
+      await page
+        .getByRole("dialog")
+        .evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    await page.screenshot({
+      path: `test-results/rules-reference-${width}.png`,
+    });
+  }
+  const summary = page.getByText("Shared actions and team rounds", {
+    exact: true,
+  });
+  await summary.focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Close rules reference" }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(summary).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "Vanguard rules reference" }),
+  ).toBeFocused();
+});
+
 test("rounds, personal upgrades, and loss resolve without a turn lock", async ({
   page,
 }) => {

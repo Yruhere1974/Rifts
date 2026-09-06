@@ -74,6 +74,9 @@ Last local verification (2026-09-06): `npm run check` passed end to end; `npm au
 
 ## In Flight
 
+- Added a contextual ? rules reference beside the active engine heading. All four engines have authored rules, cooperation examples, and core upgrade/donation explanations; expandable shared rules cover actions, readings, reserves, and team rounds. The public-reference selector never changes seats or sends game commands. Existing modal focus management now includes disclosure summaries so keyboard focus remains trapped. Reference copy is grounded in the existing reducer; no game mechanics changed.
+- Reference verification: formatting, lint, typecheck, production build, 18 unit tests, and seven playable browser tests pass. Desktop/mobile reference screenshots inspected. Coverage includes all four engine entries, seat/state preservation, disclosure keyboard wrapping, and focus restoration. The two unchanged multiplayer tests were not rerun for this UI change; there are now nine browser tests in the full suite.
+
 - Tutorial guidance now highlights the expected control with a yellow pulse, following seat changes, component selection, actions and commits. Hold capability has an exact target. Show me where focuses the same highlighted control. Completion highlights Next lesson; pausing removes highlights. Reduced motion keeps a steady outline. Added desktop/mobile browser coverage for the reported Hold-capability discoverability issue.
 - Highlight verification: formatting, lint, typecheck, build, 18 unit tests, and all six playable browser tests pass. Desktop/mobile highlight screenshots inspected. The two unchanged multiplayer tests were not rerun for this UI-only change; the suite now contains eight browser tests in total.
 

@@ -36,6 +36,7 @@ import { EngineConsole, identities } from "./EngineConsole.js";
 import { useMission } from "./useMission.js";
 import { useModalFocus } from "./useModalFocus.js";
 import { Tutorial } from "./Tutorial.js";
+import { RulesReference } from "./RulesReference.js";
 
 const seats: Seat[] = ["soldier", "mage", "scout", "operator"];
 const locations = [
@@ -100,6 +101,7 @@ export function App() {
   const [finishing, setFinishing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [tutorial, setTutorial] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   useModalFocus(
     !view
       ? "briefing"
@@ -111,11 +113,14 @@ export function App() {
             ? "finishing"
             : help
               ? "help"
-              : "",
+              : rulesOpen
+                ? "rules"
+                : "",
     () => {
       setArtifact(false);
       setFinishing(false);
       setHelp(false);
+      setRulesOpen(false);
     },
   );
   const identity = identities[seat];
@@ -518,6 +523,14 @@ export function App() {
                 <span className="component-count">
                   {player?.upgraded ? "ENHANCED" : "STANDARD KIT"}
                 </span>
+                <button
+                  className="icon-button"
+                  aria-label={`${identity.title} rules reference`}
+                  title={`${identity.title} rules reference`}
+                  onClick={() => setRulesOpen(true)}
+                >
+                  <CircleHelp size={20} />
+                </button>
               </div>
               <EngineConsole
                 view={view}
@@ -862,6 +875,7 @@ export function App() {
                     setFinishing(false);
                     setHelp(false);
                     setHistory(false);
+                    setRulesOpen(false);
                     void game.connect(
                       lobbyMode,
                       lobbyMode === "practice" ? "soldier" : lobbySeat,
@@ -997,6 +1011,12 @@ export function App() {
             </div>
           </section>
         </div>
+      )}
+      {rulesOpen && view && view.phase === "action" && (
+        <RulesReference
+          initialSeat={seat}
+          onClose={() => setRulesOpen(false)}
+        />
       )}
       {view && view.phase !== "action" && (
         <div className="modal-backdrop">

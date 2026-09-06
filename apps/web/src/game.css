@@ -1792,3 +1792,88 @@ select {
     box-shadow: 0 0 0 5px #ffe06633;
   }
 }
+.rules-reference {
+  width: min(700px, 100%);
+  border-top-color: var(--reference-color);
+}
+.rules-reference h2 {
+  font-size: 28px;
+  padding-right: 12px;
+  color: var(--reference-color);
+}
+.rules-reference .eyebrow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.rules-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+.rules-selector select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  font: inherit;
+}
+.rules-reference section {
+  border-top: 1px solid #52625a;
+  margin-top: 20px;
+  padding-top: 16px;
+}
+.rules-reference h3 {
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+.rules-reference h4 {
+  font-size: 14px;
+  margin: 16px 0 6px;
+  color: var(--reference-color);
+}
+.rules-reference p,
+.rules-reference li,
+.rules-reference dd {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #d2ddd6;
+}
+.rules-reference p {
+  margin: 8px 0;
+}
+.rules-reference ul {
+  padding-left: 20px;
+}
+.rules-reference li + li {
+  margin-top: 8px;
+}
+.shared-rules {
+  border-top: 1px solid #52625a;
+  padding-top: 16px;
+  margin-top: 20px;
+}
+.shared-rules summary {
+  cursor: pointer;
+  font-size: 16px;
+  padding: 8px 0;
+}
+.shared-rules dt {
+  font-size: 14px;
+  font-weight: 700;
+  margin-top: 16px;
+}
+.shared-rules dd {
+  margin: 5px 0 0;
+}
+.engine-heading > .icon-button {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .rules-reference {
+    padding: 28px 18px;
+  }
+  .rules-reference h2 {
+    font-size: 25px;
+  }
+}

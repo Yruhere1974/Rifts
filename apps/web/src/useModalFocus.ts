@@ -21,7 +21,7 @@ export function useModalFocus(active: string, onClose: () => void): void {
     });
     const focusable = () => [
       ...dialog.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input, select, [tabindex="0"]',
+        'button:not(:disabled), input, select, summary, [tabindex="0"]',
       ),
     ];
     focusable()[0]?.focus();

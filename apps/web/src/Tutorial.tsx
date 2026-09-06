@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -7,7 +7,7 @@ import {
   LocateFixed,
   Pause,
 } from "lucide-react";
-import type { MissionView } from "@rifts/rules";
+import type { MissionAction, MissionView, Seat } from "@rifts/rules";
 
 type Lesson = {
   title: string;
@@ -146,18 +146,122 @@ const lessons: Lesson[] = [
   },
 ];
 
+type Guidance = {
+  selected: string;
+  pieces: string[];
+  action: MissionAction;
+  recipient: Seat;
+  artifactOpen: boolean;
+};
+
+// These hints follow client selection and the filtered view; they never commit actions.
+function nextTarget(index: number, view: MissionView, ui: Guidance): string {
+  const requiredSeat: (Seat | null)[] = [
+    "soldier",
+    "soldier",
+    null,
+    "mage",
+    "mage",
+    "operator",
+    "mage",
+    "operator",
+    "scout",
+    "scout",
+    "mage",
+    null,
+  ];
+  const seat = requiredSeat[index];
+  if (seat && seat !== view.seat) return `[data-tutorial-seat="${seat}"]`;
+  const core = ui.artifactOpen
+    ? ".core-choices button:not(:disabled)"
+    : '[data-tutorial="core"]';
+  if (ui.artifactOpen || index === 2) return core;
+  if (index === 0 || index === 3) return ".share-button";
+  if (index === 4) return '[data-tutorial="hold"]';
+  if (index === 8)
+    return view.engine.drawn.filter((t) => t.kind !== "hazard").length >= 2
+      ? '[data-tutorial="bank"]'
+      : ".draw-bag";
+
+  const player = view.players.find((p) => p.seat === view.seat)!;
+  let action: MissionAction = "contribute";
+  const location = index === 1 ? "relay" : "rift";
+  if (index === 5) {
+    if (player.location !== "rift") action = "move";
+    else if (!view.engine.slots.includes("recover")) action = "recover";
+    else return '[data-tutorial="request"]';
+  } else if (index === 6) action = "assist";
+  else if (
+    (index === 9 || index === 10 || index === 7) &&
+    player.location !== "rift"
+  )
+    action = "move";
+  if (index === 11) return ".objective-section";
+  if (
+    action === "contribute" &&
+    view.resources.power < (location === "relay" ? 2 : 1)
+  ) {
+    if (view.artifact) return core;
+    action = "acquire";
+  }
+  if (
+    action !== "assist" &&
+    action !== "recover" &&
+    action !== "acquire" &&
+    ui.selected !== location
+  )
+    return `.location-pin.${location}`;
+  if (index === 9 && !view.engine.banked) return '[data-tutorial="bank"]';
+  const requiredPieces = index === 10 && action === "contribute" ? 2 : 1;
+  if (ui.pieces.length < requiredPieces) {
+    if (view.seat === "mage") {
+      const name =
+        index === 6
+          ? "Exploit Opening"
+          : ui.pieces.length === 0
+            ? "Channel"
+            : "Resonance";
+      return `.playing-card[aria-label="${name} card"][aria-pressed="false"]`;
+    }
+    if (view.seat === "operator")
+      return '.placement-marker[aria-pressed="false"]';
+    if (view.seat === "scout")
+      return '.bag-token:not(.hazard)[aria-pressed="false"]';
+    return '.die[aria-pressed="false"]';
+  }
+  if (ui.action !== action)
+    return `.action-slots button[title="${action[0]!.toUpperCase() + action.slice(1)}"]`;
+  if (action === "assist" && ui.recipient !== "operator")
+    return '[aria-label="Assistance recipient"]';
+  if (action === "acquire")
+    return '[aria-label="Resource to acquire"], [data-tutorial="commit"]';
+  return '[data-tutorial="commit"]';
+}
+
 export function Tutorial({
   view,
   active,
   onPause,
+  guidance,
 }: {
   view: MissionView;
   active: boolean;
   onPause: () => void;
+  guidance: Guidance;
 }) {
   const [index, setIndex] = useState(0);
   const lesson = lessons[index]!;
   const complete = lesson.complete(view);
+  const targetSelector = complete
+    ? '[data-tutorial="next"]'
+    : nextTarget(index, view, guidance);
+  useEffect(() => {
+    if (!active || view.phase !== "action") return;
+    const targets = document.querySelectorAll<HTMLElement>(targetSelector);
+    targets.forEach((target) => target.classList.add("tutorial-beacon"));
+    return () =>
+      targets.forEach((target) => target.classList.remove("tutorial-beacon"));
+  }, [active, view, targetSelector]);
   if (!active || view.phase !== "action") return null;
   return (
     <section className="tutorial-band" aria-label="Guided tutorial">
@@ -178,9 +282,9 @@ export function Tutorial({
         <button
           className="text-button"
           onClick={() => {
-            const target = document.querySelector<HTMLElement>(lesson.target);
+            const target = document.querySelector<HTMLElement>(targetSelector);
             target?.scrollIntoView({ block: "center", behavior: "instant" });
-            const control = target?.matches("button:not(:disabled)")
+            const control = target?.matches("button:not(:disabled), select")
               ? target
               : target?.querySelector<HTMLElement>("button:not(:disabled)");
             control?.focus({ preventScroll: true });
@@ -190,6 +294,7 @@ export function Tutorial({
         </button>
         <button
           className="primary-button"
+          data-tutorial="next"
           disabled={!complete || index === lessons.length - 1}
           onClick={() => setIndex(index + 1)}
         >

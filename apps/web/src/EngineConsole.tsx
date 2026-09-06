@@ -204,6 +204,7 @@ export function EngineConsole({
             {!engine.banked && (
               <button
                 className="bank-button"
+                data-tutorial="bank"
                 onClick={onBank}
                 disabled={
                   disabled || !engine.drawn.some((t) => t.kind !== "hazard")

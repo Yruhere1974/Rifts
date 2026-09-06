@@ -74,6 +74,9 @@ Last local verification (2026-09-06): `npm run check` passed end to end; `npm au
 
 ## In Flight
 
+- Tutorial guidance now highlights the expected control with a yellow pulse, following seat changes, component selection, actions and commits. Hold capability has an exact target. Show me where focuses the same highlighted control. Completion highlights Next lesson; pausing removes highlights. Reduced motion keeps a steady outline. Added desktop/mobile browser coverage for the reported Hold-capability discoverability issue.
+- Highlight verification: formatting, lint, typecheck, build, 18 unit tests, and all six playable browser tests pass. Desktop/mobile highlight screenshots inspected. The two unchanged multiplayer tests were not rerun for this UI-only change; the suite now contains eight browser tests in total.
+
 - Added an optional 12-lesson solo tutorial using the existing filtered view and public action log; no rule, server, or hidden-state changes. Start via the lobby checkbox; pause/resume via the header compass. Includes real-state completion checks, back/skip, control targeting, mobile Training navigation, and resolution feedback. A new table resets the guide. Guided victory and mobile lifecycle are covered by Playwright. No deployment or push authorized.
 
 - Human playtesting and balance calibration remain outstanding.

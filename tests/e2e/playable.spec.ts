@@ -222,6 +222,54 @@ test("tutorial can pause, resume, skip and restart on a new mobile table", async
   );
 });
 
+test("tutorial highlights the expected specialist and Hold capability", async ({
+  page,
+}) => {
+  await deploy(page, true);
+  await expect(page.locator(".share-button")).toHaveClass(/tutorial-beacon/);
+  for (let i = 0; i < 4; i++)
+    await page.getByRole("button", { name: "Skip lesson" }).click();
+  const wayfinder = page.locator('[data-tutorial-seat="mage"]');
+  await expect(wayfinder).toHaveClass(/tutorial-beacon/);
+  await page.getByRole("button", { name: "Show me where" }).click();
+  await expect(wayfinder).toBeFocused();
+  await wayfinder.click();
+  const hold = page.getByRole("button", {
+    name: "Hold capability",
+    exact: true,
+  });
+  await expect(hold).toHaveClass(/tutorial-beacon/);
+  await expect(wayfinder).not.toHaveClass(/tutorial-beacon/);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(hold).toHaveCSS("animation-name", "tutorial-beacon-pulse");
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.getByRole("button", { name: "Show me where" }).click();
+    await expect(hold).toBeFocused();
+    await expect(hold).toBeInViewport();
+    await page.screenshot({
+      path: `test-results/tutorial-highlight-${width}.png`,
+    });
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(hold).toHaveCSS("animation-name", "none");
+  await expect(hold).toHaveCSS("outline-color", "rgb(255, 224, 102)");
+  await hold.click();
+  await expect(hold).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Next lesson" })).toHaveClass(
+    /tutorial-beacon/,
+  );
+  await page
+    .locator(".tutorial-band")
+    .getByRole("button", { name: "Pause tutorial" })
+    .click();
+  await expect(page.locator(".tutorial-beacon")).toHaveCount(0);
+  await page.getByRole("button", { name: "Resume tutorial" }).click();
+  await expect(page.getByRole("button", { name: "Next lesson" })).toHaveClass(
+    /tutorial-beacon/,
+  );
+});
+
 test("rounds, personal upgrades, and loss resolve without a turn lock", async ({
   page,
 }) => {

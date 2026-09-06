@@ -226,6 +226,13 @@ export function App() {
           key={game.roomId}
           view={view}
           active={tutorial}
+          guidance={{
+            selected,
+            pieces,
+            action,
+            recipient,
+            artifactOpen: artifact,
+          }}
           onPause={() => {
             document
               .querySelector<HTMLElement>("[data-tutorial-toggle]")
@@ -472,6 +479,7 @@ export function App() {
                 key={role}
                 style={{ "--crew-color": id.color } as CSSProperties}
                 className={`crew-seat ${seat === role ? "active" : ""}`}
+                data-tutorial-seat={role}
                 onClick={() => game.mode === "practice" && changeSeat(role)}
                 aria-pressed={seat === role}
                 disabled={game.mode === "team" && seat !== role}
@@ -522,6 +530,7 @@ export function App() {
               <div className="engine-footer">
                 <button
                   className={`text-button ${player?.holding ? "highlight" : ""}`}
+                  data-tutorial="hold"
                   onClick={() => send({ type: "hold" })}
                   disabled={player?.ready || view.phase !== "action"}
                 >
@@ -531,6 +540,7 @@ export function App() {
                 <button
                   className="text-button"
                   onClick={() => setArtifact(true)}
+                  data-tutorial="core"
                 >
                   <Diamond size={14} />
                   {view.artifact
@@ -600,6 +610,7 @@ export function App() {
                 <button
                   className="text-button"
                   onClick={() => send({ type: "request", target: selected })}
+                  data-tutorial="request"
                 >
                   <Radio size={13} />
                   Request help
@@ -618,6 +629,7 @@ export function App() {
                     !game.started
                   }
                   onClick={() => send(command)}
+                  data-tutorial="commit"
                 >
                   Commit {action}
                   <ArrowRight size={17} />

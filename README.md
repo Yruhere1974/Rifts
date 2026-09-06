@@ -25,7 +25,7 @@ Choose **Solo table** to explore all four seats, or **Cooperative table** to cre
 
 ## Play
 
-For a first game, choose **Solo table**, check **Guided tutorial / learn all four specialists**, then **Deploy to Greyhaven**. Twelve lessons guide real actions through a shared victory. **Show me where** locates the relevant controls; the compass in the header pauses or resumes the guide. On mobile, **Training** returns to the current lesson. You can revisit or skip lessons without altering the match. Tutorial progress lasts for the current table, not across reloads.
+For a first game, choose **Solo table**, check **Guided tutorial / learn all four specialists**, then **Deploy to Greyhaven**. Twelve lessons guide real actions through a shared victory. A yellow pulsing outline marks the expected control, starting with the correct specialist when necessary; reduced-motion settings use a steady outline. **Show me where** scrolls to and focuses that control; the compass in the header pauses or resumes the guide. On mobile, **Training** returns to the current lesson. You can revisit or skip lessons without altering the match. Tutorial progress lasts for the current table, not across reloads.
 
 Select a location on the board. Select dice, cards, banked tokens, or placement markers, then choose a shared action. The commitment preview shows the authoritative rule's cost and effect. Components are not consumed until commitment.
 

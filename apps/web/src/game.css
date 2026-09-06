@@ -1768,3 +1768,27 @@ select {
     flex-shrink: 0;
   }
 }
+.tutorial-beacon {
+  outline: 3px solid #ffe066 !important;
+  outline-offset: 4px;
+  animation: tutorial-beacon-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tutorial-beacon-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 5px #ffe06622,
+      0 0 8px #ffe06644;
+  }
+  50% {
+    box-shadow:
+      0 0 0 8px #ffe06655,
+      0 0 22px #ffe06688;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-beacon {
+    animation: none;
+    box-shadow: 0 0 0 5px #ffe06633;
+  }
+}

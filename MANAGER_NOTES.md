@@ -2,9 +2,11 @@
 
 ## Current Ratchet
 
-The Rifts repository has been initialized with project ground truth for the cooperative asymmetric board game web application.
+The repository now contains the first playable local vertical slice: Dimensional Stabilizer at Greyhaven. It includes the shared Pixi board, four mechanically distinct React consoles, authoritative Colyseus rooms, private readings, assistance, core upgrade/donation choices, intermingled rounds, and victory/defeat.
 
-This repo now has a verified TypeScript monorepo infrastructure scaffold. Gameplay implementation is still intentionally minimal.
+Work remains local on `develop` by the user's instruction. Do not push, merge to `main`, deploy, or tag a release without a subsequent request. The unrelated Household Hub push-notification recap in the conversation did not authorize changes to this game's deployment.
+
+Local web URL: `http://localhost:5174`. Game server: port `2568`, health at `/__healthcheck`. The web server proxies `/game` to it. Existing services on 5173/2567 were left alone.
 
 ## Project Intent
 
@@ -25,6 +27,10 @@ The first prototype should prove:
 - Stack ADR: `docs/architecture/adr-0001-web-app-stack.md`
 - Coding standards: `docs/standards/coding-standards.md`
 - Repo operating model: `RATCHETING.md`
+- Executable mission details: `docs/product/playable-slice.md`
+- Visibility and lifecycle: `docs/architecture/adr-0002-prototype-visibility.md`
+- Critical and comparison reviews: `docs/playtests/prototype-review.md`
+- Local setup and play: `README.md`
 
 ## Architectural Direction
 
@@ -58,22 +64,23 @@ Player engine action -> universal game event -> shared world reducer
 
 ## Recommended Next Click
 
-Build the first real v0.1 rules loop:
+Run an unscripted four-person playtest. Assess whether the engines feel different, whether requests and information sharing change decisions, whether personal upgrades are tempting, and whether anyone feels unnecessary. Preserve the tested mission while tuning from observations.
 
-- define the first mission map model
-- define four prototype characters, one per engine family
-- expand universal events beyond the initial `MOVE`, `ACQUIRE`, and `CONTRIBUTE`
-- add hidden-information filtering tests
-- add the first Colyseus room integration test
-- connect the web client to the server room
+Current mission constants: 24 stabilization, 12 instability loss, six-round deadline, 1 Power per rift contribution, relay costs 2 Power and doubles output, blind work adds 5 instability, Operator priming adds 1 output. These are authored prototype numbers, not a redesign of the concept constitution.
+
+Verification covers 18 unit tests and six browser/network tests, including a four-browser victory, solo-table victory/loss, wire privacy, reserved-seat rejoining, shared-cost races, and desktop/mobile screenshot/canvas checks. The separate critical reviewer found no remaining concrete blocker after the fixes recorded in the review document. The full repository check is the release gate; do not infer human enjoyment or final balance from automation.
+
+Last local verification (2026-09-06): `npm run check` passed end to end; `npm audit --audit-level=high` reported zero vulnerabilities; `git diff --check` passed. Both the web URL and Colyseus health endpoint responded successfully.
 
 ## In Flight
 
-- Rules are skeletal and only cover initial universal event reducers.
-- Server room exists but is not yet connected to the web client.
+- Human playtesting and balance calibration remain outstanding.
+- Rooms are ephemeral; a restart or all players leaving loses the match.
+- Browser ownership keys are appropriate to local playtesting, not production account authentication.
+- Production bundle emits the existing Pixi-size and upstream Zod annotation warnings; builds succeed.
 - Database schema is skeletal and has no migrations yet.
 - CI workflow exists but has not yet been proven by a remote GitHub run.
 
 ## Handoff
 
-Ratcheted project concept, stack decision, coding standards, and verified monorepo infrastructure into Rifts.
+Ratcheted the first cooperative four-engine playable prototype into Rifts, locally on develop. Project concept, stack decision, coding standards, and earlier infrastructure tests are preserved.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+export * from "./mission.js";
 
 export const scenarioSchema = z.strictObject({
   id: z.string().min(1),

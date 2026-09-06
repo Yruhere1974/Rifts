@@ -8,12 +8,13 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@rifts/content": "0.1.0",
-    "@rifts/rules": "0.1.0",
-    "@rifts/shared": "0.1.0",
     "@colyseus/core": "^0.18.10",
     "@colyseus/schema": "^5.0.27",
     "@colyseus/ws-transport": "^0.18.2",
+    "@rifts/content": "0.1.0",
+    "@rifts/rules": "0.1.0",
+    "@rifts/shared": "0.1.0",
+    "express": "^5.2.1",
     "tsx": "^4.20.5",
     "zod": "^4.1.12"
   }

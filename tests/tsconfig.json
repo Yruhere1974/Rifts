@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "outDir": "../test-results/types"
+  },
+  "include": ["e2e/**/*.ts"],
+  "references": [
+    { "path": "../packages/rules" },
+    { "path": "../packages/content" },
+    { "path": "../packages/shared" }
+  ]
+}

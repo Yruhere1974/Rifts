@@ -9,10 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@colyseus/sdk": "^0.18.2",
     "@rifts/content": "0.1.0",
     "@rifts/rules": "0.1.0",
     "@rifts/shared": "0.1.0",
     "@vitejs/plugin-react": "^5.0.2",
+    "lucide-react": "^1.41.0",
     "pixi.js": "^8.13.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

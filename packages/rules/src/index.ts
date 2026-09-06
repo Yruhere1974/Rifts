@@ -6,3 +6,4 @@ export type {
   ProjectState,
 } from "./state.js";
 export { createInitialGameState, reduceGameEvent } from "./state.js";
+export * from "./mission.js";

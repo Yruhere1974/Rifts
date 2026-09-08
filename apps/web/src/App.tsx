@@ -26,9 +26,12 @@ import {
 } from "lucide-react";
 import {
   previewAction,
+  engineTier,
+  hasReports,
   worldPressure,
   type MissionCommand,
   type Seat,
+  type MissionLocation,
 } from "@rifts/rules";
 import { playableMission } from "@rifts/content";
 import { BoardCanvas } from "./BoardCanvas.js";
@@ -126,9 +129,13 @@ export function App() {
   const identity = identities[seat];
   const recipient = ally === seat ? seats.find((s) => s !== seat)! : ally;
   const pressure = worldPressure(view?.round ?? 1, view?.threat ?? 3);
+  const tier = engineTier(view?.round ?? 1);
   const location =
     locations.find((item) => item.id === selected) ?? locations[1]!;
   const player = view?.players.find((item) => item.seat === seat);
+  // A surge is spent whole, so the Pathfinder never selects part of it.
+  const committed =
+    seat === "scout" ? (view?.engine.pending.map((t) => t.id) ?? []) : pieces;
   const command: MissionCommand = {
     type: "act",
     action,
@@ -140,7 +147,7 @@ export function App() {
           : action === "recover"
             ? seat
             : selected,
-    pieces,
+    pieces: committed,
   };
   const preview = view ? previewAction(view, command) : null;
   const send = (input: MissionCommand) => {
@@ -233,7 +240,7 @@ export function App() {
           active={tutorial}
           guidance={{
             selected,
-            pieces,
+            pieces: committed,
             action,
             recipient,
             artifactOpen: artifact,
@@ -353,6 +360,68 @@ export function App() {
                   : "Frequency uncertain"}
               </span>
             </div>
+            {view && (
+              <section
+                className="location-perception"
+                aria-label="Private location assessment"
+              >
+                <div className="section-label">
+                  <LockKeyhole size={14} /> {identity.title} / PRIVATE
+                  ASSESSMENT
+                </div>
+                {view.perceptions
+                  .filter((reading) => reading.location === selected)
+                  .map((reading) => (
+                    <div
+                      className={`intel ${reading.status}`}
+                      key={reading.location}
+                    >
+                      <span>{reading.status}</span>
+                      <p>{reading.text}</p>
+                    </div>
+                  ))}
+                <p className="muted">
+                  Other specialists' unshared assessments are hidden.
+                </p>
+                <button
+                  className="text-button"
+                  disabled={
+                    view.phase !== "action" ||
+                    view.reports.some(
+                      (r) => r.seat === seat && r.location === selected,
+                    )
+                  }
+                  onClick={() =>
+                    send({ type: "share", target: selected as MissionLocation })
+                  }
+                >
+                  <Send size={14} />{" "}
+                  {view.reports.some(
+                    (r) => r.seat === seat && r.location === selected,
+                  )
+                    ? "Location assessment shared"
+                    : "Share location assessment"}
+                </button>
+                {selected === "gate" &&
+                  hasReports(view, "gate", ["soldier", "scout"]) && (
+                    <p className="discovery-note">
+                      PATROL WEAKNESS /{" "}
+                      {view.discoveries.flankUsed
+                        ? "Opening spent"
+                        : "Next Engage at West gate gains +1 effect. Any specialist can exploit it."}
+                    </p>
+                  )}
+                {selected === "archive" &&
+                  hasReports(view, "archive", ["scout", "operator"]) && (
+                    <p className="discovery-note">
+                      POWER CACHE /{" "}
+                      {view.discoveries.cacheUsed
+                        ? "Cache recovered"
+                        : "Investigate here with engine pieces to recover +2 shared Power, once only."}
+                    </p>
+                  )}
+              </section>
+            )}
           </div>
         </section>
         <aside className="team-sidebar" aria-label="Shared mission state">
@@ -460,9 +529,14 @@ export function App() {
                 </button>
               ))}
               {view?.reports.map((report) => (
-                <div className="report" key={report.seat}>
+                <div
+                  className="report"
+                  key={`${report.seat}-${report.location}`}
+                >
                   <span style={{ color: identities[report.seat].color }}>
-                    {identities[report.seat].title} / SHARED
+                    {identities[report.seat].title} /{" "}
+                    {locations.find((l) => l.id === report.location)?.name} /
+                    SHARED
                   </span>
                   <p>{report.text}</p>
                 </div>
@@ -522,6 +596,7 @@ export function App() {
                 </div>
                 <span className="component-count">
                   {player?.upgraded ? "ENHANCED" : "STANDARD KIT"}
+                  {tier > 0 ? ` / TIER ${tier}` : ""}
                 </span>
                 <button
                   className="icon-button"
@@ -537,7 +612,6 @@ export function App() {
                 selected={pieces}
                 onSelect={selectPiece}
                 onDraw={() => send({ type: "draw" })}
-                onBank={() => send({ type: "bank" })}
                 onAction={setAction}
               />
               <div className="engine-footer">
@@ -675,11 +749,15 @@ export function App() {
                 onClick={() => send({ type: "share" })}
                 disabled={
                   view.phase !== "action" ||
-                  view.reports.some((r) => r.seat === seat)
+                  view.reports.some(
+                    (r) => r.seat === seat && r.location === "rift",
+                  )
                 }
               >
                 <Send size={13} />
-                {view.reports.some((r) => r.seat === seat)
+                {view.reports.some(
+                  (r) => r.seat === seat && r.location === "rift",
+                )
                   ? "Reading shared"
                   : "Share reading with team"}
               </button>

@@ -29,9 +29,13 @@ The **?** beside each engine heading opens that specialist's rules reference: co
 
 For a first game, choose **Solo table**, check **Guided tutorial / learn all four specialists**, then **Deploy to Greyhaven**. Twelve lessons guide real actions through a shared victory. A yellow pulsing outline marks the expected control, starting with the correct specialist when necessary; reduced-motion settings use a steady outline. **Show me where** scrolls to and focuses that control; the compass in the header pauses or resumes the guide. On mobile, **Training** returns to the current lesson. You can revisit or skip lessons without altering the match. Tutorial progress lasts for the current table, not across reloads.
 
-Select a location on the board. Select dice, cards, banked tokens, or placement markers, then choose a shared action. The commitment preview shows the authoritative rule's cost and effect. Components are not consumed until commitment.
+Select a location on the board. Select dice, cards, or placement markers — or push the Pathfinder's bag for a surge — then choose a shared action. The commitment preview shows the authoritative rule's cost and effect. Components are not consumed until commitment.
 
-Restore the relay to improve everyone's stabilization output. Share two independent readings or investigate to establish safe timing. Request help when needed, and preserve a die, card, token, or marker to respond to another player's action. Each core can become a permanent personal upgrade or two shared Power.
+Restore the relay to improve everyone's stabilization output. Combine Vanguard's and Wayfinder's breach readings, or investigate, to establish safe timing. Request help when needed, and preserve a die, card, token, or marker to respond to another player's action. Each core can become a permanent personal upgrade or two shared Power.
+
+Select a map location to see your specialist's **private assessment**. Other specialists see different evidence about that same place. **Share location assessment** publishes only that assessment. Vanguard and Pathfinder can expose a patrol weakness; Pathfinder and Operator can locate an archive power cache. Any specialist can then spend their own engine capability to exploit these one-use team discoveries. Solo tables let you inspect every seat for learning; use separate cooperative clients for genuinely private play.
+
+Every engine gains capability at the start of rounds 3 and 5, on the same clock the world escalates on, so a long mission makes the team stronger as well as the crisis worse.
 
 Reach **24 stabilization**, stay below **12 instability**, and finish before the **sixth round's world response**. Hold keeps capability available; Finish round forfeits remaining opportunities once confirmed. There are no individual player turns.
 

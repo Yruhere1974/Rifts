@@ -27,7 +27,8 @@ const lessons: Lesson[] = [
     consequence:
       "Your reading becomes public, but one report alone cannot establish safe timing. The shared breach needs 24 stabilization before instability reaches 12.",
     target: ".private-section",
-    complete: (v) => v.reports.some((r) => r.seat === "soldier"),
+    complete: (v) =>
+      v.reports.some((r) => r.seat === "soldier" && r.location === "rift"),
   },
   {
     title: "Commit a die to the relay",
@@ -53,9 +54,9 @@ const lessons: Lesson[] = [
     instruction:
       "Switch to Wayfinder in the crew strip. Read their different perception and Share reading with team.",
     consequence:
-      "Two independent reports reveal safe timing. Blind work would add 5 instability per contribution; your shared information removes that risk.",
+      "Vanguard's pulse onset and Wayfinder's quiet interval reveal safe timing together. Other specialists cannot substitute for those readings. Blind work would add 5 instability per contribution; your shared information removes that risk.",
     target: ".crew-seat:nth-child(2)",
-    complete: (v) => v.reports.length >= 2,
+    complete: (v) => v.frequencyKnown,
   },
   {
     title: "Hold a response in reserve",
@@ -104,20 +105,22 @@ const lessons: Lesson[] = [
     complete: (v) => logged(v, "Operator: contribute rift"),
   },
   {
-    title: "Push your luck, then bank",
+    title: "Ask for one more",
     instruction:
-      "Switch to Pathfinder. Draw from the bag until you have two safe tokens, then Bank haul. Stop sooner if the risk feels too high.",
+      "Switch to Pathfinder and Push twice. Watch the band above the button move as safe tokens leave the bag. Stop when the odds stop being worth it.",
     consequence:
-      "A second hazard destroys the pending haul and adds instability. Banking ends drawing for this round, but secured tokens can fund separate actions. A lost haul is a real consequence, not a tutorial reset.",
+      "Each push makes the next one riskier, because safe tokens leave the bag and hazards always go back in. A hazard costs the whole surge and adds instability, and the second burnout costs more than the first. This is a real loss, not a tutorial reset.",
     target: ".engine-section",
-    complete: (v) => logged(v, "Scout secured their haul"),
+    complete: (v) =>
+      v.log.filter((e) => e.text.includes("pushed for another surge token"))
+        .length >= 2,
   },
   {
-    title: "Bring your finds into the world",
+    title: "Spend the surge whole",
     instruction:
-      "As Pathfinder, select The breach. Spend one banked safe token on Move, then another on Contribute. If you banked only one, use it to Acquire Power instead and skip this lesson.",
+      "As Pathfinder, select The breach, then Commit move. Push again, then Contribute. Acquire Power first if the reserve is empty.",
     consequence:
-      "Bag tokens affect the same reserves and objective as dice, cards and placements. Every breach contribution still costs 1 shared Power.",
+      "An action spends the entire surge, so you push to the size the action deserves: once for a move, harder for a contribution. Bag tokens reach the same reserves and objective as dice, cards and placements, and every breach contribution still costs 1 shared Power.",
     target: ".action-section",
     complete: (v) => logged(v, "Scout: contribute rift"),
   },
@@ -140,7 +143,7 @@ const lessons: Lesson[] = [
     instruction:
       "Use the remaining crew capability to reach 24. Vanguard can move with a low die and contribute with high dice. Operator can assist Vanguard if its Uplink is still free. Acquire Power or donate remaining cores when needed.",
     consequence:
-      "Need fresh pieces? Finish round for each of the four specialists; only then does the world add instability and refill all engines. Engage the patrol at West gate to reduce future pressure, or Recover to lower instability. The sixth round is the deadline.",
+      "Need fresh pieces? Finish round for each of the four specialists; only then does the world add instability and refill all engines. Rounds 3 and 5 also grow every engine, so a longer mission gives the team more capability as well as more pressure. Engage the patrol at West gate to reduce future pressure, or Recover to lower instability. The sixth round is the deadline.",
     target: ".objective-section",
     complete: (v) => v.phase === "won",
   },
@@ -178,10 +181,7 @@ function nextTarget(index: number, view: MissionView, ui: Guidance): string {
   if (ui.artifactOpen || index === 2) return core;
   if (index === 0 || index === 3) return ".share-button";
   if (index === 4) return '[data-tutorial="hold"]';
-  if (index === 8)
-    return view.engine.drawn.filter((t) => t.kind !== "hazard").length >= 2
-      ? '[data-tutorial="bank"]'
-      : ".draw-bag";
+  if (index === 8) return '[data-tutorial="push"]';
 
   const player = view.players.find((p) => p.seat === view.seat)!;
   let action: MissionAction = "contribute";
@@ -211,7 +211,6 @@ function nextTarget(index: number, view: MissionView, ui: Guidance): string {
     ui.selected !== location
   )
     return `.location-pin.${location}`;
-  if (index === 9 && !view.engine.banked) return '[data-tutorial="bank"]';
   const requiredPieces = index === 10 && action === "contribute" ? 2 : 1;
   if (ui.pieces.length < requiredPieces) {
     if (view.seat === "mage") {
@@ -225,8 +224,7 @@ function nextTarget(index: number, view: MissionView, ui: Guidance): string {
     }
     if (view.seat === "operator")
       return '.placement-marker[aria-pressed="false"]';
-    if (view.seat === "scout")
-      return '.bag-token:not(.hazard)[aria-pressed="false"]';
+    if (view.seat === "scout") return '[data-tutorial="push"]';
     return '.die[aria-pressed="false"]';
   }
   if (ui.action !== action)

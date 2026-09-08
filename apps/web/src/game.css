@@ -983,12 +983,6 @@ select {
 .bag-token span {
   font-size: 8px;
 }
-.bag-token.hazard {
-  background: #b1745e;
-  border-color: #d39d84;
-  color: #361a14;
-  opacity: 1;
-}
 .bag-token.selected {
   outline: 2px solid #e3d797;
   outline-offset: 3px;
@@ -1052,12 +1046,8 @@ select {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
 }
-.bank-button {
-  font-size: 11px;
-  padding: 8px;
-  border-color: #8dac84;
-  background: #334833;
-  margin-top: 4px;
+.surge-note {
+  color: #c3b98d;
 }
 .finish-consequence {
   display: flex;
@@ -1876,4 +1866,22 @@ select {
   .rules-reference h2 {
     font-size: 25px;
   }
+}
+.location-perception {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #64776b;
+}
+.location-perception .intel p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.location-perception .muted {
+  font-size: 12px;
+}
+.discovery-note {
+  border-left: 3px solid #e5b65c;
+  padding: 10px 14px;
+  color: #f0d58e;
+  font-size: 14px;
 }

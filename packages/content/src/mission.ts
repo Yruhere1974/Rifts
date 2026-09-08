@@ -98,21 +98,21 @@ export const playableMission = playableMissionSchema.parse({
       seat: "soldier",
       name: "Soldier",
       engine:
-        "Allocate five dice. Engage needs 4+, assist 3+. A 4+ die produces 2 effect; any die moves.",
+        "Allocate five dice, gaining another at rounds 3 and 5. Engage needs 4+, assist 3+. A 4+ die produces 2 effect; any die moves.",
       upgrade: "An extra die immediately and every round.",
     },
     {
       seat: "mage",
       name: "Mage",
       engine:
-        "Spend any card for 1 effect, or Channel + Resonance for 3. Exploit Opening assists for 2 after the shield is suppressed.",
+        "Spend any card for 1 effect, or Channel + Resonance for 3. The hand grows by a Channel at round 3 and a Resonance at round 5. Exploit Opening assists for 2 after the shield is suppressed.",
       upgrade: "Channel + Resonance produces 4 effect permanently.",
     },
     {
       seat: "scout",
       name: "Scout",
       engine:
-        "Draw from eight tokens. Two hazards lose the pending haul and add 1 instability. Bank the haul to stop drawing this round and make its safe tokens available for actions.",
+        "Push a bag of eight tokens for a surge. A hazard loses the whole surge, adds escalating instability, and returns to the bag; safe tokens leave it. An action spends the entire surge. Rounds 3 and 5 add a double-value jackpot without removing either hazard.",
       upgrade:
         "Replace one hazard with a double-output jackpot now and in every future bag.",
     },
@@ -120,7 +120,7 @@ export const playableMission = playableMissionSchema.parse({
       seat: "operator",
       name: "Operator",
       engine:
-        "Place four markers in distinct action modules. Recover primes the next effect placement for +1 effect.",
+        "Place four markers in distinct action modules, gaining another at rounds 3 and 5. Recover primes the next effect placement for +1 effect.",
       upgrade: "An extra placement marker immediately and every round.",
     },
   ],

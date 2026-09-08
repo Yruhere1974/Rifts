@@ -66,6 +66,8 @@ test("authoritative rooms redact secrets, bind seats, and serialize shared costs
       for (const other of clients.filter((c) => c !== player)) {
         expect(wire).not.toContain(other.latest.view.intel[0]!.text);
         expect(wire).not.toContain(other.latest.view.objective);
+        for (const reading of other.latest.view.perceptions)
+          expect(wire).not.toContain(reading.text);
         expect(wire).not.toContain(other.latest.token);
       }
     }
@@ -157,7 +159,7 @@ test("four independent browser seats see one world and different private engines
     await expect(pages[0]!.locator(".die")).toHaveCount(5);
     await expect(pages[1]!.locator(".playing-card")).toHaveCount(5);
     await expect(
-      pages[2]!.getByRole("button", { name: "Draw from bag" }),
+      pages[2]!.getByRole("button", { name: "Push for another surge token" }),
     ).toBeVisible();
     await expect(pages[3]!.locator(".placement-marker")).toHaveCount(4);
     const mageReading = await pages[1]!
@@ -199,6 +201,29 @@ test("four independent browser seats see one world and different private engines
         .click();
       await expect(page.locator(".event-ribbon p")).not.toHaveText(before);
     };
+    /** Pushes the bag until the surge holds `target` tokens, absorbing busts. */
+    const push = async (page: Page, target: number) => {
+      const tray = page.locator(".token-tray .bag-token");
+      const status = page.locator(".risk-track > span");
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const held = await tray.count();
+        if (held >= target) return;
+        // A safe push grows the surge; a burnout instead raises the stress line.
+        const stress = await status.innerText();
+        await page
+          .getByRole("button", { name: "Push for another surge token" })
+          .click();
+        await expect
+          .poll(
+            async () =>
+              (await tray.count()) !== held ||
+              (await status.innerText()) !== stress,
+            { timeout: 10_000 },
+          )
+          .toBe(true);
+      }
+      throw new Error(`Surge never reached ${target} tokens.`);
+    };
     const donate = async (page: Page) => {
       await page.getByRole("button", { name: "Unclaimed power core" }).click();
       await page.getByRole("button", { name: "Donate core to team" }).click();
@@ -227,22 +252,12 @@ test("four independent browser seats see one world and different private engines
     await operator.locator(".placement-marker").first().click();
     await commit(operator, "Contribute");
     await expect(scout.locator(".objective-counter strong")).toContainText("8");
-    for (
-      let i = 0;
-      i < 8 && (await scout.locator(".bag-token:not(.hazard)").count()) < 2;
-      i++
-    ) {
-      const before = await scout.locator(".draw-bag small").innerText();
-      await scout.getByRole("button", { name: "Draw from bag" }).click();
-      await expect(scout.locator(".draw-bag small")).not.toHaveText(before);
-    }
-    await scout.getByRole("button", { name: "Bank haul" }).click();
     await scout
       .getByRole("button", { name: "The breach", exact: true })
       .click();
-    await scout.locator(".bag-token:not(.hazard)").first().click();
+    await push(scout, 1);
     await commit(scout, "Move");
-    await scout.locator(".bag-token:not(.hazard)").first().click();
+    await push(scout, 1);
     await commit(scout, "Contribute");
     await donate(scout);
     await donate(mage);

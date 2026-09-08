@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyCommand,
   createMission,
+  engineTier,
   missionSeats,
   playerView,
   previewAction,
@@ -21,19 +22,29 @@ function act(
 }
 function piece(state: MissionState, seat: Seat): string {
   const e = state.private[seat].engine;
-  return (
-    e.dice[0]?.id ??
-    e.hand[0]?.id ??
-    e.drawn.find((t) => t.kind !== "hazard")?.id ??
-    e.markers[0]!
-  );
+  return e.dice[0]?.id ?? e.hand[0]?.id ?? e.pending[0]?.id ?? e.markers[0]!;
+}
+/** A Scout action commits the whole surge; other engines commit one piece. */
+function committed(state: MissionState, seat: Seat): string[] {
+  const e = state.private[seat].engine;
+  return seat === "scout" ? e.pending.map((t) => t.id) : [piece(state, seat)];
+}
+/** Draws until the surge holds `count` tokens, absorbing any busts on the way. */
+function push(state: MissionState, count: number): MissionState {
+  let s = state;
+  while (s.private.scout.engine.pending.length < count) {
+    if (s.private.scout.engine.bagRemaining === 0)
+      throw new Error("Bag exhausted before the surge was built.");
+    s = act(s, "scout", { type: "draw" });
+  }
+  return s;
 }
 function action(
   state: MissionState,
   seat: Seat,
   name: Extract<MissionCommand, { type: "act" }>["action"],
   target: string,
-  pieces = [piece(state, seat)],
+  pieces = committed(state, seat),
 ): MissionState {
   return act(state, seat, { type: "act", action: name, target, pieces });
 }
@@ -119,6 +130,79 @@ describe("Greyhaven mission", () => {
       }).allowed,
     ).toBe(low.value >= 3);
   });
+  it("requires complementary location reports and never leaks unshared perceptions", () => {
+    let s = createMission();
+    const views = missionSeats.map((seat) => playerView(s, seat));
+    for (const v of views) {
+      for (const other of views.filter((o) => o.seat !== v.seat)) {
+        for (const reading of other.perceptions)
+          expect(JSON.stringify(v)).not.toContain(reading.text);
+      }
+    }
+    s = act(s, "scout", { type: "share" });
+    s = act(s, "operator", { type: "share" });
+    expect(s.frequencyKnown).toBe(false);
+    s = act(s, "soldier", { type: "share", target: "gate" });
+    expect(s.frequencyKnown).toBe(false);
+    expect(
+      playerView(s, "mage").reports.some(
+        (r) => r.location === "gate" && r.seat === "soldier",
+      ),
+    ).toBe(true);
+    s = act(s, "soldier", { type: "share" });
+    s = act(s, "mage", { type: "share" });
+    expect(s.frequencyKnown).toBe(true);
+    expect(
+      applyCommand(s, "soldier", { type: "share", target: "gate" }).error,
+    ).not.toBeNull();
+  });
+  it("lets another engine exploit a shared weakness once, paying normal capability", () => {
+    let s = createMission();
+    s = act(s, "soldier", { type: "share", target: "gate" });
+    s = action(s, "operator", "move", "gate");
+    const command: MissionCommand = {
+      type: "act",
+      action: "engage",
+      target: "gate",
+      pieces: [piece(s, "operator")],
+    };
+    expect(previewAction(playerView(s, "operator"), command).effect).toContain(
+      "Remove 1",
+    );
+    s = act(s, "scout", { type: "share", target: "gate" });
+    expect(previewAction(playerView(s, "operator"), command).effect).toContain(
+      "Remove 2",
+    );
+    s = act(s, "operator", command);
+    expect(s.threat).toBe(1);
+    expect(s.discoveries.flankUsed).toBe(true);
+    expect(s.private.operator.engine.markers).toHaveLength(2);
+  });
+  it("recovers a corroborated archive cache once, only with a paid engine investigation", () => {
+    let s = createMission();
+    s = act(s, "scout", { type: "share", target: "archive" });
+    s = action(s, "mage", "move", "archive");
+    const command: MissionCommand = {
+      type: "act",
+      action: "investigate",
+      target: "archive",
+      pieces: [piece(s, "mage")],
+    };
+    expect(previewAction(playerView(s, "mage"), command).effect).not.toContain(
+      "cache",
+    );
+    s = act(s, "operator", { type: "share", target: "archive" });
+    expect(previewAction(playerView(s, "mage"), command).effect).toContain(
+      "+2 shared Power",
+    );
+    const fallback = action(s, "mage", "investigate", "archive", []);
+    expect(fallback.discoveries.cacheUsed).toBe(false);
+    s = act(s, "mage", command);
+    expect(s.resources.power).toBe(4);
+    expect(s.discoveries.cacheUsed).toBe(true);
+    s = action(s, "mage", "investigate", "archive");
+    expect(s.resources.power).toBe(4);
+  });
   it("makes card combos more efficient than singles and upgrades change output", () => {
     let s = createMission();
     const hand = s.private.mage.engine.hand;
@@ -133,32 +217,72 @@ describe("Greyhaven mission", () => {
     expect(upgraded.resources.power).toBe(6);
     expect(upgraded.private.mage.engine.hand).toHaveLength(3);
   });
-  it("makes Scout banking end the expedition and busts lose unbanked capability", () => {
-    let s = createMission();
-    while (!s.private.scout.engine.drawn.some((t) => t.kind !== "hazard"))
-      s = act(s, "scout", { type: "draw" });
+  it("spends a Scout surge whole and refuses to hold part of it back", () => {
+    let s = push(createMission(), 2);
+    const surge = committed(s, "scout");
+    expect(surge.length).toBe(2);
     expect(
       previewAction(playerView(s, "scout"), {
         type: "act",
         action: "acquire",
         target: "power",
-        pieces: [piece(s, "scout")],
-      }).allowed,
-    ).toBe(false);
-    s = act(s, "scout", { type: "bank" });
-    expect(applyCommand(s, "scout", { type: "draw" }).error).toContain(
-      "banked",
-    );
-    expect(
-      action(s, "scout", "acquire", "power").resources.power,
-    ).toBeGreaterThan(s.resources.power);
-    let risk = createMission();
-    while (risk.private.scout.engine.bagRemaining)
-      risk = act(risk, "scout", { type: "draw" });
-    expect(risk.instability).toBe(1);
-    expect(risk.log.some((e) => e.text.includes("lost the pending haul"))).toBe(
+        pieces: [surge[0]!],
+      }).reason,
+    ).toContain("whole surge");
+    const before = s.resources.power;
+    s = action(s, "scout", "acquire", "power");
+    expect(s.resources.power).toBe(before + 2);
+    expect(s.private.scout.engine.pending).toHaveLength(0);
+  });
+  it("returns a busting hazard to the bag so pushing only raises the odds", () => {
+    let s = createMission();
+    while (s.private.scout.engine.stress === 0)
+      s = act(s, "scout", { type: "draw" });
+    expect(s.private.scout.engine.pending).toHaveLength(0);
+    expect(s.instability).toBe(1);
+    // The hazard is back in the bag: density rises rather than falling.
+    expect(s.private.scout.engine.bagHazards).toBe(2);
+    const before = s.private.scout.engine;
+    expect(before.bagHazards / before.bagRemaining).toBeGreaterThan(2 / 8);
+    // A second burnout costs more than the first.
+    while (s.private.scout.engine.stress === 1)
+      s = act(s, "scout", { type: "draw" });
+    expect(s.private.scout.engine.stress).toBe(2);
+    expect(s.instability).toBe(3);
+    expect(s.log.some((e) => e.text.includes("pushed past the limit"))).toBe(
       true,
     );
+  });
+  it("grows every engine on the same clock the world escalates on", () => {
+    let s = createMission();
+    const seen: number[][] = [];
+    // Passive rounds lose to accumulated pressure in round 5, so read tiers 0-2.
+    for (let r = 1; r <= 5; r++) {
+      expect(s.round).toBe(r);
+      const e = s.private;
+      seen.push([
+        e.soldier.engine.dice.length,
+        e.mage.engine.hand.length,
+        e.scout.engine.bagRemaining,
+        e.operator.engine.markers.length,
+      ]);
+      // Hazards never thin out as the bag grows; only the payout does.
+      expect(e.scout.engine.bagHazards).toBe(2);
+      if (r < 5) s = round(s);
+    }
+    expect(seen).toEqual([
+      [5, 5, 8, 4],
+      [5, 5, 8, 4],
+      [6, 6, 9, 5],
+      [6, 6, 9, 5],
+      [7, 7, 10, 6],
+    ]);
+    expect([1, 2, 3, 4, 5, 6].map(engineTier)).toEqual([0, 0, 1, 1, 2, 2]);
+    expect(
+      s.log.some((entry) =>
+        entry.text.includes("Field experience reaches tier 2"),
+      ),
+    ).toBe(true);
   });
   it("enforces occupied modules and preserves priming through movement", () => {
     let s = createMission();
@@ -260,12 +384,9 @@ describe("Greyhaven mission", () => {
     s = act(s, "operator", command);
     expect(s.progress).toBe(8);
     expect(s.boosts.operator).toBe(0);
-    while (
-      s.private.scout.engine.drawn.filter((t) => t.kind !== "hazard").length < 2
-    )
-      s = act(s, "scout", { type: "draw" });
-    s = act(s, "scout", { type: "bank" });
+    s = push(s, 1);
     s = action(s, "scout", "move", "rift");
+    s = push(s, 1);
     s = action(s, "scout", "contribute", "rift");
     expect(s.phase).toBe("action");
     expect(s.progress).toBe(10);

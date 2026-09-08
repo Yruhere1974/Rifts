@@ -63,19 +63,28 @@ const pipPositions: Record<number, number[]> = {
   5: [0, 2, 4, 6, 8],
   6: [0, 2, 3, 5, 6, 8],
 };
+/** Bands the live bust odds so "one more?" is answerable at a glance. */
+export function surgeBand(hazards: number, remaining: number): string {
+  const odds = remaining > 0 ? hazards / remaining : 1;
+  return odds >= 0.65
+    ? "BURNOUT"
+    : odds >= 0.45
+      ? "REDLINE"
+      : odds >= 0.3
+        ? "AMPED"
+        : "NOMINAL";
+}
 export function EngineConsole({
   view,
   selected,
   onSelect,
   onDraw,
-  onBank,
   onAction,
 }: {
   view: MissionView;
   selected: string[];
   onSelect: (id: string) => void;
   onDraw: () => void;
-  onBank: () => void;
   onAction: (action: MissionAction) => void;
 }) {
   const engine = view.engine;
@@ -161,58 +170,49 @@ export function EngineConsole({
       <div className="bag-engine">
         <button
           className="draw-bag"
-          disabled={disabled || engine.bagRemaining === 0 || engine.banked}
+          data-tutorial="push"
+          disabled={disabled || engine.bagRemaining === 0}
           onClick={onDraw}
-          aria-label="Draw from bag"
+          aria-label="Push for another surge token"
         >
           <Compass size={31} strokeWidth={1} />
-          <strong>{engine.banked ? "Secured" : "Draw"}</strong>
+          <strong>Push</strong>
           <small>{engine.bagRemaining} in bag</small>
         </button>
         <div className="bag-pulls">
           <div className="token-tray">
-            {engine.drawn.map((token) => (
-              <button
+            {engine.pending.map((token) => (
+              <span
                 key={token.id}
-                {...componentProps(token.id)}
-                disabled={disabled || token.kind === "hazard"}
-                className={`bag-token ${token.kind === "hazard" ? "hazard" : ""} ${selected.includes(token.id) ? "selected" : ""}`}
-                aria-label={`${token.kind} token`}
+                className="bag-token selected"
+                aria-label={`${token.kind} token in surge`}
               >
-                {token.kind === "hazard" ? (
-                  <Triangle size={21} />
-                ) : (
-                  <Diamond size={21} />
-                )}
+                <Diamond size={21} />
                 <span>{token.kind}</span>
-              </button>
+              </span>
             ))}
-            {!engine.drawn.length && (
-              <span className="empty-engine">No tokens in your haul.</span>
+            {!engine.pending.length && (
+              <span className="empty-engine">
+                No surge. Push before committing an action.
+              </span>
             )}
           </div>
           <div className="risk-track">
-            <span className={engine.hazards > 0 ? "risk-active" : ""}>
+            <span className={engine.stress > 0 ? "risk-active" : ""}>
               <Triangle size={13} />
-              {engine.hazards} / 2 hazards
+              {surgeBand(engine.bagHazards, engine.bagRemaining)}
+              {engine.stress > 0 ? ` / ${engine.stress} burnt` : ""}
             </span>
             <small>
-              {engine.banked
-                ? "Haul secured. Draw again next round."
-                : `Next draw: ${engine.bagHazards} / ${engine.bagRemaining} ${engine.hazards ? "bust risk" : "hazard risk"}. Second hazard loses the haul.`}
+              {engine.bagRemaining === 0
+                ? "Body spent. Your bag refreshes next round."
+                : `Next push: ${engine.bagHazards} / ${engine.bagRemaining} breaks the surge and adds ${engine.stress + 1} instability. A hazard goes back in the bag.`}
             </small>
-            {!engine.banked && (
-              <button
-                className="bank-button"
-                data-tutorial="bank"
-                onClick={onBank}
-                disabled={
-                  disabled || !engine.drawn.some((t) => t.kind !== "hazard")
-                }
-              >
-                Bank haul / end expedition
-              </button>
-            )}
+            <small className="surge-note">
+              {engine.pending.length
+                ? `Committing spends this whole ${engine.pending.length}-token surge.`
+                : "An action spends the entire surge, so push to the size you need."}
+            </small>
           </div>
         </div>
       </div>

@@ -9,6 +9,12 @@ export const missionSeats: readonly Seat[] = [
 export const missionRoundLimit = playableMission.roundLimit;
 export const worldPressure = (round: number, threat: number): number =>
   1 + (threat > 0 ? 1 : 0) + Math.floor((round - 1) / 2);
+/**
+ * Every engine grows on the same clock the world escalates on, so a long
+ * mission means stronger specialists rather than only a heavier world.
+ */
+export const engineTier = (round: number): number =>
+  Math.floor((round - 1) / 2);
 export type MissionLocation = "gate" | "relay" | "archive" | "rift";
 export type MissionAction =
   | "move"
@@ -19,10 +25,11 @@ export type MissionAction =
   | "assist"
   | "recover";
 export type MissionCommand =
+  | { type: "share"; target?: MissionLocation | undefined }
   | { type: "act"; action: MissionAction; target: string; pieces: string[] }
   | { type: "request"; target: string }
   | {
-      type: "draw" | "bank" | "share" | "hold" | "ready" | "upgrade" | "donate";
+      type: "draw" | "hold" | "ready" | "upgrade" | "donate";
     };
 export type MissionResources = {
   materiel: number;
@@ -53,11 +60,12 @@ export type MissionToken = { id: string; kind: string };
 export type MissionEngine = {
   dice: { id: string; value: number }[];
   hand: MissionCard[];
-  drawn: MissionToken[];
+  /** Safe tokens from the current push. A hazard clears them; it never joins. */
+  pending: MissionToken[];
   bagRemaining: number;
-  hazards: number;
-  banked: boolean;
   bagHazards: number;
+  /** Hazards drawn this round. Never falls until the round refill. */
+  stress: number;
   markers: string[];
   /** Occupied modules; "primed" indicates enhanced next placement. */
   slots: string[];
@@ -76,7 +84,8 @@ export type MissionPublicState = {
   log: { id: number; text: string }[];
   players: MissionPlayer[];
   requests: { seat: Seat; target: string }[];
-  reports: { seat: Seat; text: string }[];
+  reports: { seat: Seat; location: MissionLocation; text: string }[];
+  discoveries: { flankUsed: boolean; cacheUsed: boolean };
 };
 export type MissionView = MissionPublicState & {
   seat: Seat;
@@ -84,6 +93,11 @@ export type MissionView = MissionPublicState & {
   intel: MissionIntel[];
   objective: string;
   artifact: boolean;
+  perceptions: {
+    location: MissionLocation;
+    status: MissionIntel["status"];
+    text: string;
+  }[];
 };
 export type MissionPrivateState = {
   engine: MissionEngine;
@@ -105,6 +119,7 @@ export type MissionPreview = {
 };
 /** Normalized output of any engine; contains no private piece identities. */
 export type MissionActionEvent = {
+  discovery: "flank" | "cache" | null;
   type: MissionAction;
   seat: Seat;
   target: string;
@@ -129,13 +144,94 @@ const actions: readonly string[] = [
   "assist",
   "recover",
 ];
-const clues: Record<Seat, string> = {
-  soldier: "Rift pulses track the gate patrol's targeting cycle.",
-  mage: "The rift resonates on a repeating three-beat frequency.",
-  scout: "A quiet interval follows each third rift pulse.",
-  operator:
-    "Relay telemetry can cancel the rift shield during its quiet interval.",
+const perceptions: Record<
+  Seat,
+  Record<MissionLocation, { status: MissionIntel["status"]; text: string }>
+> = {
+  soldier: {
+    gate: {
+      status: "known",
+      text: "The patrol's armored leader has an exposed rear coupling. I need a sighting of its approach route before anyone can exploit it.",
+    },
+    relay: {
+      status: "inferred",
+      text: "The relay's field appears to protect the breach, not the settlement. Technical confirmation could explain why.",
+    },
+    archive: {
+      status: "uncertain",
+      text: "A reinforced storage hatch survived the collapse. I cannot tell whether its contents are useful or dangerous.",
+    },
+    rift: {
+      status: "character-specific",
+      text: "My targeting recorder identifies the pulse onset. Wayfinder's resonance reading can supply the missing safe interval.",
+    },
+  },
+  mage: {
+    gate: {
+      status: "uncertain",
+      text: "The patrol carries no strong dimensional signature. My senses cannot distinguish its armor from its weapons.",
+    },
+    relay: {
+      status: "known",
+      text: "The shield is being sustained through this relay. Disrupting its field will make stabilization twice as effective.",
+    },
+    archive: {
+      status: "inferred",
+      text: "The archive's stored energy feels electrical, not dimensional. An intact source may remain beneath the rubble.",
+    },
+    rift: {
+      status: "character-specific",
+      text: "I can identify the quiet part of the resonance cycle, but not its starting point. Vanguard's targeting recorder can anchor it.",
+    },
+  },
+  scout: {
+    gate: {
+      status: "known",
+      text: "Tracks show the patrol turning through the west culvert with its rear exposed. A combat assessment could identify what to hit.",
+    },
+    relay: {
+      status: "inferred",
+      text: "All four approach paths reach the relay. Restoring it here may spare the team wasted work at the breach.",
+    },
+    archive: {
+      status: "known",
+      text: "I found an intact conduit leading to a buried storage hatch. Operator's diagnostics could tell us whether it is safe to recover.",
+    },
+    rift: {
+      status: "uncertain",
+      text: "Dust settles briefly between pulses. I can see a lull, but cannot establish safe timing from tracks alone.",
+    },
+  },
+  operator: {
+    gate: {
+      status: "inferred",
+      text: "Patrol telemetry suggests vulnerable hardware, but I lack its orientation. Combat and route observations could expose a weakness.",
+    },
+    relay: {
+      status: "known",
+      text: "Restoring the relay consumes 2 Power and causes a 1-instability surge. Its shield cancellation remains active for the rest of the mission.",
+    },
+    archive: {
+      status: "known",
+      text: "Diagnostics detect two usable Power cells in an isolated circuit. Pathfinder must identify the surviving access conduit before recovery is safe.",
+    },
+    rift: {
+      status: "known",
+      text: "Each stabilization commitment consumes 1 shared Power. Shield suppression amplifies output but does not establish safe pulse timing.",
+    },
+  },
 };
+export function hasReports(
+  view: Pick<MissionPublicState, "reports">,
+  location: MissionLocation,
+  seats: readonly Seat[],
+): boolean {
+  return seats.every((seat) =>
+    view.reports.some(
+      (report) => report.seat === seat && report.location === location,
+    ),
+  );
+}
 const objectives: Record<Seat, string> = {
   soldier:
     "Keep your core to install a sixth die. Donating it funds two team stabilization actions instead.",
@@ -187,25 +283,33 @@ function refill(state: MissionState, seat: Seat): void {
   p.engine = {
     dice: [],
     hand: [],
-    drawn: [],
+    pending: [],
     bagRemaining: 0,
-    hazards: 0,
-    banked: false,
     bagHazards: 0,
+    stress: 0,
     markers: [],
     slots: [],
   };
+  const tier = engineTier(state.round);
+  const bonus = tier + (upgraded ? 1 : 0);
   if (seat === "soldier")
-    p.engine.dice = Array.from({ length: upgraded ? 6 : 5 }, (_, i) => ({
+    p.engine.dice = Array.from({ length: 5 + bonus }, (_, i) => ({
       id: `${prefix}-die-${i}`,
       value: 1 + Math.floor(random(state) * 6),
     }));
   if (seat === "mage")
     p.engine.hand = shuffle(
       state,
-      ["channel", "channel", "spell", "spell", "reaction"].map((kind, i) =>
-        card(`${prefix}-card-${i}`, kind),
-      ),
+      [
+        "channel",
+        "channel",
+        "spell",
+        "spell",
+        "reaction",
+        // Growth alternates Channel and Resonance so each tier adds a weave.
+        ...(tier >= 1 ? ["channel"] : []),
+        ...(tier >= 2 ? ["spell"] : []),
+      ].map((kind, i) => card(`${prefix}-card-${i}`, kind)),
     );
   if (seat === "scout") {
     p.bag = shuffle(
@@ -219,6 +323,8 @@ function refill(state: MissionState, seat: Seat): void {
         "signal",
         "hazard",
         ...(upgraded ? ["jackpot"] : ["hazard"]),
+        // Later bags pay more without losing either hazard.
+        ...Array.from({ length: tier }, () => "jackpot"),
       ].map((kind, i) => ({ id: `${prefix}-token-${i}`, kind })),
     );
     p.engine.bagRemaining = p.bag.length;
@@ -226,7 +332,7 @@ function refill(state: MissionState, seat: Seat): void {
   }
   if (seat === "operator")
     p.engine.markers = Array.from(
-      { length: upgraded ? 5 : 4 },
+      { length: 4 + bonus },
       (_, i) => `${prefix}-marker-${i}`,
     );
 }
@@ -235,17 +341,19 @@ export function createMission(seed = 1): MissionState {
     engine: {
       dice: [],
       hand: [],
-      drawn: [],
+      pending: [],
       bagRemaining: 0,
-      hazards: 0,
-      banked: false,
       bagHazards: 0,
+      stress: 0,
       markers: [],
       slots: [],
     },
     bag: [],
     intel: [
-      { status: "character-specific", text: clues[seat] },
+      {
+        status: perceptions[seat].rift.status,
+        text: perceptions[seat].rift.text,
+      },
       {
         status: "uncertain",
         text: "The rift's safe timing requires corroboration.",
@@ -283,6 +391,7 @@ export function createMission(seed = 1): MissionState {
     })),
     requests: [],
     reports: [],
+    discoveries: { flankUsed: false, cacheUsed: false },
     private: {
       soldier: empty("soldier"),
       mage: empty("mage"),
@@ -312,6 +421,7 @@ export function playerView(state: MissionState, seat: Seat): MissionView {
     players: state.players,
     requests: state.requests,
     reports: state.reports,
+    discoveries: state.discoveries,
     seat,
     engine: p.engine,
     intel: [
@@ -329,6 +439,12 @@ export function playerView(state: MissionState, seat: Seat): MissionView {
     ],
     objective: p.objective,
     artifact: p.artifact,
+    perceptions: Object.entries(perceptions[seat]).map(
+      ([location, reading]) => ({
+        location: location as MissionLocation,
+        ...reading,
+      }),
+    ),
   });
 }
 function commandValid(value: unknown): value is MissionCommand {
@@ -345,12 +461,16 @@ function commandValid(value: unknown): value is MissionCommand {
     );
   if (c.type === "request")
     return Object.keys(c).length === 2 && typeof c.target === "string";
+  if (c.type === "share")
+    return (
+      Object.keys(c).every((key) => key === "type" || key === "target") &&
+      (c.target === undefined ||
+        (typeof c.target === "string" && locations.includes(c.target)))
+    );
   return (
     Object.keys(c).length === 1 &&
     typeof c.type === "string" &&
-    ["draw", "bank", "share", "hold", "ready", "upgrade", "donate"].includes(
-      c.type,
-    )
+    ["draw", "share", "hold", "ready", "upgrade", "donate"].includes(c.type)
   );
 }
 function plan(view: MissionView, command: MissionCommand): ActionPlan {
@@ -377,32 +497,22 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     switch (command.type) {
       case "draw":
         return view.seat !== "scout"
-          ? deny("Only the scout draws bag tokens.")
-          : e.banked
-            ? deny("Expedition banked. Draw again next round.")
-            : e.bagRemaining === 0
-              ? deny("Bag is empty until next round.")
-              : allow(
-                  "One bag token; two hazards bust the pending haul",
-                  "Draw a hidden token; a bust loses the haul and adds 1 instability.",
-                );
-      case "bank":
-        return view.seat !== "scout" ||
-          e.banked ||
-          !e.drawn.some((t) => t.kind !== "hazard")
-          ? deny("Draw a safe token before banking.")
-          : allow(
-              "End this round's expedition; no more draws",
-              "Secure the haul. Spend its tokens across your actions.",
-            );
+          ? deny("Only the scout pushes for capability.")
+          : e.bagRemaining === 0
+            ? deny("Nothing left to push for until next round.")
+            : allow(
+                `One more token; ${e.bagHazards} of ${e.bagRemaining} would break the surge`,
+                `Add a hidden token to this surge. A hazard loses the whole surge, adds ${e.stress + 1} instability, and returns to the bag.`,
+              );
       case "share":
-        return view.reports.some((r) => r.seat === view.seat)
+        return view.reports.some(
+          (r) =>
+            r.seat === view.seat && r.location === (command.target ?? "rift"),
+        )
           ? deny("Your report is already shared.")
           : allow(
               "None",
-              view.reports.length >= 1
-                ? "Publish your clue; combined reports reveal the safe frequency."
-                : "Publish your private rift clue.",
+              "Publish this location's private assessment. Complementary reports can reveal a team opportunity.",
             );
       case "request":
         return !locations.includes(command.target) &&
@@ -517,18 +627,17 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     if (selected[0]?.kind === "reaction" && action === "assist" && !view.shield)
       amount = 2;
   } else if (view.seat === "scout") {
-    if (!e.banked)
-      return deny(
-        "Bank your haul before spending tokens. Banking ends this round's draws.",
-      );
-    const selected = e.drawn.filter((t) => pieces.includes(t.id));
+    // A surge is spent whole: the push sized itself when it was taken.
+    if (e.pending.length === 0)
+      return deny("Push for capability before committing an action.");
     if (
-      pieces.length < 1 ||
-      selected.length !== pieces.length ||
-      selected.some((t) => t.kind === "hazard")
+      pieces.length !== e.pending.length ||
+      !e.pending.every((t) => pieces.includes(t.id))
     )
-      return deny("Bank one or more available non-hazard tokens.");
-    amount = selected.reduce(
+      return deny(
+        "Commit the whole surge. Part of a push cannot be held back.",
+      );
+    amount = e.pending.reduce(
       (sum, t) => sum + (t.kind === "jackpot" ? 2 : 1),
       0,
     );
@@ -540,8 +649,26 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     amount = e.slots.includes("primed") ? 2 : 1;
   }
   const enhanced = action !== "move" && action !== "assist";
+  let discovery: MissionActionEvent["discovery"] = null;
+  if (
+    action === "engage" &&
+    !view.discoveries.flankUsed &&
+    hasReports(view, "gate", ["soldier", "scout"])
+  ) {
+    discovery = "flank";
+    amount += 1;
+  }
+  if (
+    action === "investigate" &&
+    pieces.length > 0 &&
+    !view.discoveries.cacheUsed &&
+    hasReports(view, "archive", ["scout", "operator"]) &&
+    target === "archive"
+  )
+    discovery = "cache";
   if (enhanced) amount += view.boosts[view.seat];
   const event: MissionActionEvent = {
+    discovery,
     type: action,
     seat: view.seat,
     target,
@@ -555,7 +682,7 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       effect = `Move to ${target}.`;
       break;
     case "engage":
-      effect = `Remove ${Math.min(view.threat, amount)} gate threat.`;
+      effect = `Remove ${Math.min(view.threat, amount)} gate threat.${discovery === "flank" ? " Includes +1 from the shared patrol weakness; this opening is spent." : ""}`;
       break;
     case "assist":
       effect = `Give ${target} +${amount} on their next effect action. Your committed capability is spent.`;
@@ -570,6 +697,8 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       effect = fallback
         ? "Decode the safe rift frequency."
         : `Gain ${amount} knowledge and decode the safe rift frequency.`;
+      if (discovery === "cache")
+        effect += " Recover the located cache: +2 shared Power, once only.";
       break;
     case "contribute":
       if (target === "relay") {
@@ -606,6 +735,11 @@ function reduceWorld(
 ): void {
   const player = state.players.find((p) => p.seat === event.seat);
   if (!player) return;
+  if (event.discovery === "flank") state.discoveries.flankUsed = true;
+  if (event.discovery === "cache") {
+    state.discoveries.cacheUsed = true;
+    state.resources.power += 2;
+  }
   state.resources.knowledge -= event.knowledgeCost;
   if (event.reserveCost) state.resources[event.reserveCost] -= 1;
   if (event.type !== "move" && event.type !== "assist")
@@ -679,7 +813,7 @@ export function applyCommand(
     const used = new Set(command.pieces);
     e.dice = e.dice.filter((d) => !used.has(d.id));
     e.hand = e.hand.filter((c) => !used.has(c.id));
-    e.drawn = e.drawn.filter((t) => !used.has(t.id));
+    e.pending = e.pending.filter((t) => !used.has(t.id));
     e.markers = e.markers.filter((m) => !used.has(m));
     if (seat === "operator" && used.size > 0) {
       if (command.action !== "move")
@@ -697,35 +831,34 @@ export function applyCommand(
     switch (command.type) {
       case "draw": {
         const token = p.bag.pop();
-        if (token) {
-          e.drawn.push(token);
-          if (token.kind === "hazard") e.hazards++;
+        if (token?.kind === "hazard") {
+          // The hazard goes back in, so pushing can only raise the odds.
+          e.stress++;
+          e.pending = [];
+          p.bag.push(token);
+          shuffle(next, p.bag);
+          next.instability += e.stress;
+          append(
+            next,
+            `${player.name} pushed past the limit: surge lost, +${e.stress} instability.`,
+          );
+        } else {
+          if (token) e.pending.push(token);
+          append(next, `${player.name} pushed for another surge token.`);
         }
         e.bagRemaining = p.bag.length;
         e.bagHazards = p.bag.filter((t) => t.kind === "hazard").length;
-        if (e.hazards >= 2) {
-          e.drawn = [];
-          e.hazards = 0;
-          next.instability++;
-          append(
-            next,
-            "Scout's second hazard lost the pending haul: +1 instability.",
-          );
-        } else append(next, "Scout drew a private bag token.");
         player.holding = false;
         break;
       }
-      case "bank":
-        e.banked = true;
-        e.drawn = e.drawn.filter((t) => t.kind !== "hazard");
-        append(
-          next,
-          "Scout secured their haul. No further draws this round; banked tokens remain available for actions.",
-        );
-        break;
       case "share":
-        next.reports.push({ seat, text: clues[seat] });
-        if (next.reports.length >= 2) next.frequencyKnown = true;
+        next.reports.push({
+          seat,
+          location: command.target ?? "rift",
+          text: perceptions[seat][command.target ?? "rift"].text,
+        });
+        if (hasReports(next, "rift", ["soldier", "mage"]))
+          next.frequencyKnown = true;
         append(next, `${player.name}: ${validation.effect}`);
         break;
       case "request":
@@ -766,7 +899,15 @@ export function applyCommand(
               entry.holding = false;
               refill(next, entry.seat);
             }
-            append(next, `Round ${next.round}: all engines refilled.`);
+            const grew = engineTier(next.round) > engineTier(next.round - 1);
+            append(
+              next,
+              `Round ${next.round}: all engines refilled.${
+                grew
+                  ? ` Field experience reaches tier ${engineTier(next.round)}: every specialist gains capability this round.`
+                  : ""
+              }`,
+            );
           }
         }
         break;
@@ -781,13 +922,10 @@ export function applyCommand(
         if (seat === "operator")
           e.markers.push(`operator-${next.round}-upgrade`);
         if (seat === "scout") {
-          const hazard =
-            p.bag.find((t) => t.kind === "hazard") ??
-            e.drawn.find((t) => t.kind === "hazard");
-          if (hazard) {
-            if (e.drawn.includes(hazard)) e.hazards--;
-            hazard.kind = "jackpot";
-          } else
+          // Hazards never leave the bag, so removing one is a permanent gain.
+          const hazard = p.bag.find((t) => t.kind === "hazard");
+          if (hazard) hazard.kind = "jackpot";
+          else
             p.bag.push({ id: `scout-${next.round}-upgrade`, kind: "jackpot" });
           e.bagRemaining = p.bag.length;
           e.bagHazards = p.bag.filter((t) => t.kind === "hazard").length;

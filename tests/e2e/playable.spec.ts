@@ -31,6 +31,29 @@ async function commit(page: Page, action: string) {
     .click();
   await expect(page.locator(".event-ribbon p")).not.toHaveText(before!);
 }
+/** Pushes the bag until the surge holds `target` tokens, absorbing busts. */
+async function push(page: Page, target: number) {
+  const tray = page.locator(".token-tray .bag-token");
+  const status = page.locator(".risk-track > span");
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const held = await tray.count();
+    if (held >= target) return;
+    // A safe push grows the surge; a burnout instead raises the stress line.
+    const stress = await status.innerText();
+    await page
+      .getByRole("button", { name: "Push for another surge token" })
+      .click();
+    await expect
+      .poll(
+        async () =>
+          (await tray.count()) !== held ||
+          (await status.innerText()) !== stress,
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+  }
+  throw new Error(`Surge never reached ${target} tokens.`);
+}
 async function donate(page: Page) {
   await page.getByRole("button", { name: "Unclaimed power core" }).click();
   await page.getByRole("button", { name: "Donate core to team" }).click();
@@ -105,23 +128,10 @@ test("four engines complete a cooperative mission through the interface", async 
   await expect(page.locator(".objective-counter strong")).toContainText("8");
   await nextLesson(page);
   await seat(page, "Pathfinder");
-  for (
-    let i = 0;
-    i < 8 && (await page.locator(".bag-token:not(.hazard)").count()) < 2;
-    i++
-  ) {
-    const before = await page.locator(".draw-bag small").textContent();
-    await page.getByRole("button", { name: "Draw from bag" }).click();
-    await expect(page.locator(".draw-bag small")).not.toHaveText(before!);
-  }
-  await page.getByRole("button", { name: "Bank haul" }).click();
-  await expect(
-    page.getByRole("button", { name: "Draw from bag" }),
-  ).toBeDisabled();
+  await push(page, 2);
   await nextLesson(page);
-  await page.locator(".bag-token:not(.hazard)").first().click();
   await commit(page, "Move");
-  await page.locator(".bag-token:not(.hazard)").first().click();
+  await push(page, 1);
   await commit(page, "Contribute");
   await nextLesson(page);
   await seat(page, "Wayfinder");
@@ -277,7 +287,7 @@ test("specialist rule references explain each engine without changing seats", as
   const clues = [
     ["Vanguard", "Engage requires 4+"],
     ["Wayfinder", "No other two-card combination is valid"],
-    ["Pathfinder", "Bank before spending"],
+    ["Pathfinder", "spends your entire surge"],
     ["Operator", "Every module accepts only one placement per round"],
   ];
   for (const [name, rule] of clues) {
@@ -341,6 +351,73 @@ test("specialist rule references explain each engine without changing seats", as
   await expect(
     page.getByRole("button", { name: "Vanguard rules reference" }),
   ).toBeFocused();
+});
+
+test("private location perspectives combine into a paid team discovery", async ({
+  page,
+}) => {
+  await deploy(page);
+  await page
+    .getByRole("button", { name: "Silent archive", exact: true })
+    .click();
+  const assessment = page.getByRole("region", {
+    name: "Private location assessment",
+  });
+  const soldierText = await assessment.locator(".intel p").textContent();
+  await seat(page, "Pathfinder");
+  await expect(assessment.locator(".intel p")).not.toHaveText(soldierText!);
+  const scoutText = await assessment.locator(".intel p").textContent();
+  await expect(page.locator(".comms-feed")).not.toContainText(scoutText!);
+  await assessment
+    .getByRole("button", { name: "Share location assessment" })
+    .click();
+  await expect(page.locator(".comms-feed")).toContainText(scoutText!);
+  await expect(page.locator(".discovery-note")).toHaveCount(0);
+  await seat(page, "Operator");
+  await expect(assessment).toContainText("two usable Power cells");
+  await expect(assessment).not.toContainText(scoutText!);
+  await assessment
+    .getByRole("button", { name: "Share location assessment" })
+    .click();
+  await expect(page.locator(".discovery-note")).toContainText(
+    "+2 shared Power",
+  );
+  await seat(page, "Wayfinder");
+  await page
+    .getByRole("button", { name: "Channel card", exact: true })
+    .first()
+    .click();
+  await commit(page, "Move");
+  await page
+    .getByRole("button", { name: "Channel card", exact: true })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Investigate", exact: true }).click();
+  await expect(page.locator(".action-preview")).toContainText(
+    "+2 shared Power",
+  );
+  await commit(page, "Investigate");
+  await expect(page.locator(".discovery-note")).toContainText(
+    "Cache recovered",
+  );
+  await expect(
+    page.locator('.resource-pool [title="power"] strong'),
+  ).toHaveText("4");
+  await expect(page.locator(".playing-card")).toHaveCount(3);
+  await page.screenshot({
+    path: "test-results/location-perspective-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await assessment.scrollIntoViewIfNeeded();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/location-perspective-mobile.png",
+  });
 });
 
 test("rounds, personal upgrades, and loss resolve without a turn lock", async ({

@@ -28,8 +28,10 @@ export const commandSchema = z.discriminatedUnion("type", [
       .refine((pieces) => new Set(pieces).size === pieces.length),
   }),
   z.strictObject({ type: z.literal("draw") }),
-  z.strictObject({ type: z.literal("bank") }),
-  z.strictObject({ type: z.literal("share") }),
+  z.strictObject({
+    type: z.literal("share"),
+    target: z.enum(["gate", "relay", "archive", "rift"]).optional(),
+  }),
   z.strictObject({ type: z.literal("request"), target }),
   z.strictObject({ type: z.literal("hold") }),
   z.strictObject({ type: z.literal("ready") }),

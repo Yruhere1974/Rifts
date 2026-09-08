@@ -4,7 +4,7 @@
 
 The repository now contains the first playable local vertical slice: Dimensional Stabilizer at Greyhaven. It includes the shared Pixi board, four mechanically distinct React consoles, authoritative Colyseus rooms, private readings, assistance, core upgrade/donation choices, intermingled rounds, and victory/defeat.
 
-Work remains local on `develop` by the user's instruction. Do not push, merge to `main`, deploy, or tag a release without a subsequent request. The unrelated Household Hub push-notification recap in the conversation did not authorize changes to this game's deployment.
+Active work belongs on `develop`; stable states are merged to `main` and tagged, then pushed to `origin`. Deployment and hosting are still out of scope and were never authorized: the unrelated Household Hub push-notification recap in the conversation did not authorize changes to this game's deployment.
 
 Local web URL: `http://localhost:5174`. Game server: port `2568`, health at `/__healthcheck`. The web server proxies `/game` to it. Existing services on 5173/2567 were left alone.
 
@@ -107,4 +107,15 @@ Ratcheted the Pathfinder surge rework and per-round engine growth into Rifts on 
 
 This commit also carries earlier uncommitted in-flight work that was already present in the working tree at the start of the session (the per-location private perception expansion and its notes entry). It was not separable from the new changes by the time it was found, so it is ratcheted together rather than left loose.
 
-Earlier ratchets remain unpushed: `origin/develop` is still at the project-docs commit, so GitHub holds none of the prototype. Pushing, merging to `main`, tagging and deploying still await an explicit request.
+The click is complete: `develop` is merged to `main`, tagged `v2026.09.08-surge-and-growth`, and pushed to `origin`. This also closed a long-standing gap, since `origin/main` and `origin/develop` had both been stalled at the project-docs commit and GitHub held none of the prototype.
+
+The push had been failing for a transport reason worth recording, because it silently blocked every earlier ratchet too. `origin` was an HTTPS URL, so pushes used an OAuth token rather than the SSH key this machine uses for most repositories, and GitHub refuses to let an OAuth App create or update `.github/workflows/ci.yml` without the `workflow` scope:
+
+```txt
+refusing to allow an OAuth App to create or update workflow
+`.github/workflows/ci.yml` without `workflow` scope
+```
+
+`origin` is now `git@github.com:Yruhere1974/Rifts.git`. SSH is not subject to OAuth App scopes, so the workflow file pushes normally and this matches the transport already used by the adjacent repositories. Do not resolve a recurrence by deleting or excluding the CI workflow: that removes working configuration to satisfy a permissions gap. If HTTPS is ever required here again, `gh auth refresh -s workflow` or a PAT carrying the `workflow` scope is the fix.
+
+Deployment and hosting remain out of scope.

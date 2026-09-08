@@ -1,0 +1,20 @@
+{
+  "name": "@rifts/content",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "validate": "tsx src/validate.ts"
+  },
+  "dependencies": {
+    "@rifts/shared": "0.1.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.5"
+  }
+}

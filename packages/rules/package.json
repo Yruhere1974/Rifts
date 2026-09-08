@@ -1,0 +1,19 @@
+{
+  "name": "@rifts/rules",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@rifts/content": "0.1.0",
+    "@rifts/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

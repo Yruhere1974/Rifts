@@ -13,16 +13,17 @@ This repository follows the **Ratcheting** operating model. Every contribution m
 ## 🤝 Expectations for Agents
 
 When you initialize in this environment:
+
 - **Read the History**: Look at the last 3 commits to understand the current "click" of the ratchet.
 - **Respect the Structure**: This repo is part of a segregated strategy. Do not leak concerns from other domains (Infra, Logic, Content) into this one.
-- **Communicate the Click**: When you finish a task, explicitly state: *"Ratcheted [X] into [Repository Name]."*
+- **Communicate the Click**: When you finish a task, explicitly state: _"Ratcheted [X] into [Repository Name]."_
 
 ## 🧬 Segregation & Communication Context
 
 This repo is one piece of the Ummard/Simon ecosystem. To maintain context and prevent drift:
 
 1.  **Project-Specific Ground Truth**: All project-related notes, architectural decisions (ADRs), and agent-to-agent handoffs MUST reside in the project's own GitHub repository.
-2.  **The Communication Point (MANAGER_NOTES.md)**: Use `MANAGER_NOTES.md` as the central handoff point. 
+2.  **The Communication Point (MANAGER_NOTES.md)**: Use `MANAGER_NOTES.md` as the central handoff point.
     - **Managers/Architects**: Write intent, constraints, and requirements here.
     - **Staff/Developers (Gemini CLI)**: Read this file to initialize context and implement logic.
     - **SecOps (Guardian/Challenger)**: Leave audit notes and adversarial challenges in this file (or specialized SecOps notes) within the repo.
@@ -34,24 +35,32 @@ This repo is one piece of the Ummard/Simon ecosystem. To maintain context and pr
 We have integrated the **BMad Method (BMM)** to provide structured, expert-driven collaboration. The **Primary Agent** hosts the BMAD core and coordinates the workflow.
 
 ### 1. Analysis & Discovery (The Analyst)
+
 Before architecture, we perform deep discovery.
+
 - **Asset Discovery:** Proactive Inquiry. Explicitly request real-world samples or data before generating logic. For Greenfield projects, confirm no assets exist before proceeding.
 - **Product Brief:** Define vision, users, and success metrics.
 - **Research:** Perform technical and domain research to ground decisions in data. Dissect acquired assets to identify edge cases.
 
 ### 2. Solutioning (The Architect)
+
 Complex shifts require an explicit architecture phase.
+
 - **Stack Selection & Analysis:** MANDATORY. Formally review and select the technology stack (language, frameworks, infrastructure). Document Pros/Cons and justify the choice based on the target ecosystem (e.g., .NET for Microsoft-centric targets).
 - **Architecture Decisions:** Documented as ADRs (Architecture Decision Records).
 - **Readiness Check:** Validate that PRDs and architecture are sufficient for implementation.
 
 ### 3. Implementation (The Developer)
+
 Development is guided by structured workflows.
+
 - **Quick Flow:** For rapid fixes, use the `bmad-quick-flow` (Understand → Investigate → Generate → Review).
 - **Story-Driven Dev:** Large features are broken into Epics and Stories, implemented with adversarial self-checks.
 
 ### 4. Quality & Governance (The Scrum Master & SecOps)
+
 Progress is verified against both functional and security engineering principles.
+
 - **Ratcheting is the Final Lock:** No matter the workflow, the "Click" (Git tag + Handoff) remains the mandatory exit criteria.
 - **DevSecOps Guardian (Mentor):** Invoked during architecture to drive **Reduced Complexity (NIST SA-8(7))** and perform **Criticality Analysis (NIST RA-9)**. Prevents security over-engineering.
 - **SecOps Challenger (Adversary):** Invoked during implementation to challenge **Spaghetti Design (NIST SA-8(3/4))** and validate **Acceptable Security (NIST SA-8(28))**. Ensures the design is testable and user-friendly.

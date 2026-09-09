@@ -592,7 +592,9 @@ function BagEngine({ view, disabled, onDraw }: EngineProps) {
           <small>
             {engine.bagRemaining === 0
               ? "Body spent. Your bag refreshes next round."
-              : `Next push: ${engine.bagHazards} / ${engine.bagRemaining} breaks the surge and adds ${engine.stress + 1} instability. A hazard goes back in the bag.`}
+              : engine.pending.length === 0
+                ? `Next push: ${engine.bagHazards} / ${engine.bagRemaining} breaks it. Nothing is at stake yet, so that costs no instability, but the hazard goes back in the bag.`
+                : `Next push: ${engine.bagHazards} / ${engine.bagRemaining} loses all ${engine.pending.length} and adds ${engine.pending.length + engine.stress} instability. A hazard goes back in the bag.`}
           </small>
           <small className="surge-note">
             {pending.length

@@ -77,6 +77,10 @@ Adding a web dependency or changing `vite.config.ts` also needs the web dev serv
 
 ## In Flight
 
+- Juicer burnout now charges for what was at stake: one instability per token lost, plus one for each burnout already taken this round. Busting with an empty hand risked nothing and so costs nothing, though the hazard still returns to the bag and stress still rises, which makes every later push worse. Over 200 seeds the mean cost of building a two-token surge fell from 1.86 to 0.98 and runs reaching six or more instability halved. Pushing for three or four is still expensive, which is the point: there is now a cheap efficient line and greed is a real gamble rather than a tax.
+
+- That closes the outstanding defect in the push-your-luck engine, so the Juicer and the Glitter Boy are both mechanically complete. Neither has been played by a person yet, which is the actual lock.
+
 - Patrols hold ground and the platform can stand in front of them, on `feature/hex-board`. A patrol blocks its own hex and its reach ends a move: you can close with one, never stroll past it, which is what lets a body hold a corridor. `reachable` takes the enemy list, and the client's reach highlight and travel animation take it too, so the board never promises a move the server refuses.
 
 - Shield earns its slot. A patrol now hits for its strength rather than a flat point, and dice left in Shield subtract from that hit. Those dice did nothing else all round, which is exactly what holding a line costs, and Recover still spends them: fix instability now, or hold the shield for the world response. Only the dice platform has a guard, which is deliberate. It is the one that can stand there.

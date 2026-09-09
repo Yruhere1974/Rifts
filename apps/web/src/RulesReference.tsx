@@ -45,7 +45,7 @@ const engineRules: Record<
   bag: {
     kit: "A fresh bag each round: six safe tokens and two hazards. Safe find, cache, and signal tokens each give 1 effect; their names do not restrict which action they can fund.",
     rules: [
-      "Push to add a hidden token to your surge. A hazard destroys the whole surge and adds instability equal to the number of times you have burnt out this round: the first costs 1, the second 2, the third 3.",
+      "Push to add a hidden token to your surge. A hazard destroys the whole surge and costs the team one instability for every token lost, plus one for each burnout already taken this round. Busting with an empty hand risked nothing, so it costs nothing.",
       "A hazard goes back into the bag; safe tokens leave it when drawn. The odds therefore only ever get worse within a round, and the band above the Push button reports them before each push.",
       "Committing an action spends your entire surge, so push to the size the action deserves. Move once, contribute hard. With no surge you can still spend a shared resource, exactly like the other engines.",
     ],

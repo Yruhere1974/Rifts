@@ -727,7 +727,9 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
             ? deny("Nothing left to push for until next round.")
             : allow(
                 `One more token; ${e.bagHazards} of ${e.bagRemaining} would break the surge`,
-                `Add a hidden token to this surge. A hazard loses the whole surge, adds ${e.stress + 1} instability, and returns to the bag.`,
+                e.pending.length === 0
+                  ? "Add a hidden token to this surge. Nothing is at stake yet, so a hazard costs no instability, but it returns to the bag and makes every later push worse."
+                  : `Add a hidden token to this surge. A hazard loses all ${e.pending.length}, adds ${e.pending.length + e.stress} instability, and returns to the bag.`,
               );
       case "allocate":
         return view.seat !== "dice"
@@ -1228,15 +1230,23 @@ export function applyCommand(
       case "draw": {
         const token = p.bag.pop();
         if (token?.kind === "hazard") {
-          // The hazard goes back in, so pushing can only raise the odds.
+          // Burnout costs what was actually at stake: a token for every token
+          // lost, and one more for every burnout already taken this round.
+          // Busting with nothing in hand is a gamble with nothing on it, so it
+          // costs the team nothing; the hazard returning and the stress rising
+          // are punishment enough, because both make the next push worse.
+          const lost = e.pending.length;
           e.stress++;
           e.pending = [];
           p.bag.push(token);
           shuffle(next, p.bag);
-          next.instability += e.stress;
+          const damage = lost === 0 ? 0 : lost + (e.stress - 1);
+          next.instability += damage;
           append(
             next,
-            `${player.name} pushed past the limit: surge lost, +${e.stress} instability.`,
+            damage === 0
+              ? `${player.name} pushed with nothing in hand and burnt out. The hazard goes back in the bag.`
+              : `${player.name} pushed past the limit: ${lost} lost, +${damage} instability.`,
           );
         } else {
           if (token) e.pending.push(token);

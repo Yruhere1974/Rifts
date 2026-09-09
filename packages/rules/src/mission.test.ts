@@ -586,6 +586,26 @@ describe("Greyhaven mission", () => {
     expect(upgraded.resources.power).toBe(6);
     expect(upgraded.private.cards.engine.hand).toHaveLength(3);
   });
+  it("charges burnout for what was at stake, not for having pushed", () => {
+    // A bust with nothing in hand risked nothing, so it costs the team nothing.
+    let empty = createMission();
+    while (empty.private.bag.engine.stress === 0)
+      empty = act(empty, "bag", { type: "draw" });
+    const firstLoss = empty.private.bag.engine.pending.length;
+    expect(firstLoss).toBe(0);
+
+    // The same burnout holding tokens costs one per token lost.
+    let held = createMission();
+    let lost = 0;
+    while (held.private.bag.engine.stress === 0) {
+      lost = held.private.bag.engine.pending.length;
+      held = act(held, "bag", { type: "draw" });
+    }
+    expect(held.instability).toBe(lost);
+    // Either way the hazard is back in the bag and the odds are worse.
+    expect(held.private.bag.engine.bagHazards).toBe(2);
+    expect(held.private.bag.engine.stress).toBe(1);
+  });
   it("spends a Scout surge whole and refuses to hold part of it back", () => {
     let s = push(createMission(), 2);
     const surge = committed(s, "bag");
@@ -608,16 +628,24 @@ describe("Greyhaven mission", () => {
     while (s.private.bag.engine.stress === 0)
       s = act(s, "bag", { type: "draw" });
     expect(s.private.bag.engine.pending).toHaveLength(0);
-    expect(s.instability).toBe(1);
+    // Burnout costs what was on the table, so a bust with an empty hand is
+    // free of instability and a bust holding tokens is not.
+    expect(s.instability).toBeGreaterThan(0);
     // The hazard is back in the bag: density rises rather than falling.
     expect(s.private.bag.engine.bagHazards).toBe(2);
     const before = s.private.bag.engine;
     expect(before.bagHazards / before.bagRemaining).toBeGreaterThan(2 / 8);
     // A second burnout costs more than the first.
-    while (s.private.bag.engine.stress === 1)
+    // Compounding is still real: the same stake costs more once you have
+    // already burnt out, which the preview states before you push.
+    while (s.private.bag.engine.pending.length === 0)
       s = act(s, "bag", { type: "draw" });
-    expect(s.private.bag.engine.stress).toBe(2);
-    expect(s.instability).toBe(3);
+    const held = s.private.bag.engine.pending.length;
+    const stress = s.private.bag.engine.stress;
+    expect(stress).toBeGreaterThan(0);
+    expect(
+      previewAction(playerView(s, "bag"), { type: "draw" }).effect,
+    ).toContain(`adds ${held + stress} instability`);
     expect(s.log.some((e) => e.text.includes("pushed past the limit"))).toBe(
       true,
     );

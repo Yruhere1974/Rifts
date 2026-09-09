@@ -2274,3 +2274,32 @@ select {
   background-size: 200% 100%;
   animation: rifts-current var(--motion-ambient) linear infinite;
 }
+
+/* ---- Shared world motion ----
+   The team sidebar mirrors state the server has already resolved, so every cue
+   here reveals a change that has landed. None of them loop, none of them cover
+   a control, and none of them gate a click: rounds are simultaneous and another
+   specialist may act at any point during one. The vocabulary above supplies all
+   of them except the track cell, which needs a form of its own. */
+
+/* A track cell taking the charge: dark, flares, cools into its filled colour.
+   Backwards fill holds a newly filled cell dim through its stagger delay, so a
+   multi-cell gain reads left to right rather than arriving all at once. */
+@keyframes rifts-ignite {
+  0% {
+    filter: brightness(0.42);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  30% {
+    filter: brightness(1.85);
+    box-shadow: 0 0 7px 1px var(--motion-glow, #bdcd9c);
+  }
+  100% {
+    filter: brightness(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.motion-ignite {
+  animation: rifts-ignite var(--motion-settle) var(--ease-settle) both;
+  animation-delay: var(--motion-delay, 0ms);
+}

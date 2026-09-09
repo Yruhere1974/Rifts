@@ -34,8 +34,9 @@ describe("mission map", () => {
     // The main hall carries it to the objective it exists to defend.
     expect(large.has(hexKey(siteHexes.relay))).toBe(true);
     expect(large.has(hexKey(siteHexes.rift))).toBe(true);
-    // The side passages are too tight, so route choice depends on unit size.
-    expect(large.has(hexKey(siteHexes.gate))).toBe(false);
+    // The gate is the only fight, so the weapons platform can reach it.
+    expect(large.has(hexKey(siteHexes.gate))).toBe(true);
+    // The archive passage is too tight, so route choice still depends on size.
     expect(large.has(hexKey(siteHexes.archive))).toBe(false);
     expect(large.size).toBeLessThan(reachable(missionMap.sizes.standard).size);
   });

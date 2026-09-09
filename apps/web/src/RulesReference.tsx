@@ -15,17 +15,19 @@ const engineRules: Record<
   }
 > = {
   dice: {
-    kit: "Five six-sided dice each round. Allocate one available die per engine action; committed dice are spent until the next round.",
+    kit: "Five six-sided dice each round, and six systems on the platform to put them in. You will never fill all six, so every round is a decision about what the machine is not doing.",
     rules: [
-      "A die showing 1-3 gives 1 effect; 4-6 gives 2 effect. The face is a threshold, not the amount of damage or progress.",
-      "Engage requires 4+. Assist requires 3+. Other actions accept any die. Moving costs a die regardless of its value, so low dice are useful.",
+      "Allocate dice to systems, then fire a system. Drive powers Move, Targeting powers Engage, Stabilizer powers Contribute and Shield powers Recover. Allocation is free and reversible until the system fires.",
+      "A die in a system is worth 1, or 2 if it shows 4 or more. Firing spends everything in that system at once, so a heavily loaded system is one big commitment rather than several small ones.",
+      "The Boom Gun doubles every die in it, but it cannot fire unbraced: Bracing must hold a die, and that die is spent with the shot for no output of its own. Engaging fires Targeting, Boom Gun and Bracing together.",
+      "Assist, Acquire and Investigate are pilot work, not platform work. Each takes a single die still loose in the tray, and Assist still needs a 3 or better.",
     ],
     growth:
-      "Field experience adds a sixth die in round 3 and a seventh in round 5. More dice mean more simultaneous commitments, not stronger single ones: the 4+ threshold never moves. Keeping your core adds one more on top.",
+      "Field experience adds a sixth die in round 3 and a seventh in round 5. More dice mean more systems can be live at once, not stronger single systems: a 4+ die is still worth 2 and no threshold moves. Keeping your core adds one more on top.",
     cooperation:
-      "High dice can remove patrol strength, produce shared reserves, stabilize the breach, or become support for an ally. Giving a die to Assist means it cannot also advance your own position or contribution.",
+      "A loaded Boom Gun is three dice that cannot move you, shield you or stabilise the breach. That is the trade the rest of the team is relying on you to make: hold the hall and hit hard, or stay mobile and contribute steadily.",
     example:
-      "At the breach, a 4+ die gives 2 effect. With +2 support from an ally and the relay restored, Contribute gives (2 + 2) x 2 = 8 stabilization, costing that die and 1 shared Power. Safe timing must be known to avoid instability.",
+      "Two dice into Drive carries you to the gate. A 5 into Targeting, a 6 into the Boom Gun and any die into Bracing removes 2 + (2 x 2) = 6 patrol strength in one shot, and empties the tray. Leaving the Boom Gun loaded but unbraced wastes it entirely, which the panel says before you commit.",
   },
   cards: {
     kit: "Five cards each round: two Channel, two Resonance, and one Exploit Opening. Played cards leave your hand until the next round.",

@@ -2733,3 +2733,84 @@ select {
 .advance-track li.spent {
   opacity: 0.5;
 }
+
+/* ---- Platform allocation ----
+   Six systems and five dice, so the board's job is to show what the machine is
+   not doing this round as clearly as what it is. */
+.allocate-hint {
+  margin: 10px 0 8px;
+  font-size: 11px;
+  color: #8fa398;
+}
+.facet-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 9px;
+}
+.facet {
+  text-align: left;
+  border: 1px dashed #3a4842;
+  border-radius: 8px;
+  background: #16201e;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 92px;
+  color: inherit;
+}
+.facet:disabled {
+  cursor: default;
+}
+.facet:not(:disabled):hover {
+  border-color: var(--seat-color);
+}
+.facet-head {
+  display: flex;
+  flex-direction: column;
+}
+.facet-head strong {
+  font-size: 13px;
+}
+.facet-head small {
+  font-size: 10px;
+  color: #8fa398;
+}
+.facet-dice {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-height: 24px;
+}
+.facet-die {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  background: #e8e4d5;
+  color: #14211c;
+  font-style: normal;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 0 #6f7a63;
+}
+.facet-output {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #8fa398;
+}
+.facet.loaded {
+  border-style: solid;
+  border-color: var(--seat-color);
+}
+.facet.loaded .facet-output {
+  color: var(--seat-color);
+}
+.facet.inert {
+  border-color: #b1745e;
+}
+.facet.inert .facet-output {
+  color: #e4a680;
+}

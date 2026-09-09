@@ -195,7 +195,7 @@ test("specialist rule references explain each engine without changing seats", as
 }) => {
   await deploy(page);
   const clues = [
-    ["Glitter Boy", "Engage requires 4+"],
+    ["Glitter Boy", "cannot fire unbraced"],
     ["Ley Line Walker", "No other two-card combination is valid"],
     ["Juicer", "spends your entire surge"],
     ["Techno-Wizard", "Every module accepts only one placement per round"],

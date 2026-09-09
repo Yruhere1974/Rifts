@@ -16,7 +16,12 @@ import {
   Plus,
   Hexagon,
 } from "lucide-react";
-import type { MissionView, MissionAction, Seat } from "@rifts/rules";
+import type {
+  GlitterFacet,
+  MissionView,
+  MissionAction,
+  Seat,
+} from "@rifts/rules";
 import { specialists } from "@rifts/content";
 import {
   MOTION,
@@ -245,17 +250,41 @@ function Die({
  * are read rather than snapped into place. Committed dice unmount, so the
  * spend gets one brief flash across the tray and nothing more.
  */
-function DiceEngine({ view, selected, piece }: EngineProps) {
+/** The platform's systems, in the order the panel reads them. */
+const facetPanel: {
+  facet: GlitterFacet;
+  name: string;
+  note: string;
+}[] = [
+  { facet: "mobility", name: "Drive", note: "Move" },
+  { facet: "targeting", name: "Targeting", note: "Engage" },
+  { facet: "boom", name: "Boom Gun", note: "Doubles, needs a brace" },
+  { facet: "bracing", name: "Bracing", note: "Holds the shot steady" },
+  { facet: "stabilizer", name: "Stabilizer", note: "Contribute" },
+  { facet: "shield", name: "Shield", note: "Recover" },
+];
+
+function DiceEngine({
+  view,
+  selected,
+  piece,
+  onAllocate,
+}: EngineProps & {
+  onAllocate: (die: string, facet: GlitterFacet | null) => void;
+}) {
   const dice = view.engine.dice;
   const reduced = useReducedMotion();
   const ids = dice.map((die) => die.id);
   const arrivals = useArrivals(ids);
   const order = arrivalOrder(ids, arrivals);
   const spend = useDeparture(dice.length);
+  const loose = dice.filter((die) => die.facet === null);
+  const held = selected.find((id) => loose.some((die) => die.id === id));
+  const braced = dice.some((die) => die.facet === "bracing");
   return (
     <div className="dice-engine">
-      <div className="dice-tray">
-        {dice.map((die) => (
+      <div className="dice-tray" aria-label="Unallocated dice">
+        {loose.map((die) => (
           <Die
             key={die.id}
             value={die.value}
@@ -266,21 +295,75 @@ function DiceEngine({ view, selected, piece }: EngineProps) {
             piece={piece(die.id)}
           />
         ))}
-        {!dice.length && <p className="empty-engine">All dice committed.</p>}
+        {!loose.length && (
+          <p className="empty-engine">
+            {dice.length
+              ? "Every die is committed to a system."
+              : "All dice spent."}
+          </p>
+        )}
         {spend > 0 && !reduced && (
           <span key={spend} className="tray-spend" aria-hidden="true" />
         )}
       </div>
-      <div className="engine-rules">
-        <span>
-          ENGAGE <b>4+</b>
-        </span>
-        <span>
-          ASSIST <b>3+</b>
-        </span>
-        <span>
-          MOVE <b>ANY</b>
-        </span>
+      <p className="allocate-hint">
+        {held
+          ? "Choose a system for that die."
+          : "Select a die, then a system. Firing a system spends everything in it."}
+      </p>
+      <div className="facet-board">
+        {facetPanel.map((entry) => {
+          const inside = dice.filter((die) => die.facet === entry.facet);
+          const output = inside.reduce(
+            (sum, die) => sum + (die.value >= 4 ? 2 : 1),
+            0,
+          );
+          const inert = entry.facet === "boom" && inside.length > 0 && !braced;
+          return (
+            <button
+              key={entry.facet}
+              className={`facet${inside.length ? " loaded" : ""}${inert ? " inert" : ""}`}
+              data-facet={entry.facet}
+              aria-label={`${entry.name} system`}
+              disabled={!held}
+              onClick={() => held && onAllocate(held, entry.facet)}
+            >
+              <span className="facet-head">
+                <strong>{entry.name}</strong>
+                <small>{entry.note}</small>
+              </span>
+              <span className="facet-dice">
+                {inside.map((die) => (
+                  <i
+                    key={die.id}
+                    className="facet-die"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Return die ${die.value} to the tray`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onAllocate(die.id, null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.stopPropagation();
+                      onAllocate(die.id, null);
+                    }}
+                  >
+                    {die.value}
+                  </i>
+                ))}
+              </span>
+              <span className="facet-output">
+                {inert
+                  ? "UNBRACED"
+                  : output
+                    ? `${entry.facet === "boom" ? output * 2 : output} output`
+                    : "empty"}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -646,12 +729,14 @@ export function EngineConsole({
   onSelect,
   onDraw,
   onAction,
+  onAllocate,
 }: {
   view: MissionView;
   selected: string[];
   onSelect: (id: string) => void;
   onDraw: () => void;
   onAction: (action: MissionAction) => void;
+  onAllocate: (die: string, facet: GlitterFacet | null) => void;
 }) {
   const disabled =
     view.phase !== "action" ||
@@ -677,7 +762,8 @@ export function EngineConsole({
   // One component per seat rather than one component with four branches: each
   // console holds motion state, and changing seat has to reset it rather than
   // carry a dice tray's arrivals into a card hand.
-  if (view.seat === "dice") return <DiceEngine {...props} />;
+  if (view.seat === "dice")
+    return <DiceEngine {...props} onAllocate={onAllocate} />;
   if (view.seat === "cards") return <CardsEngine {...props} />;
   if (view.seat === "bag") return <BagEngine {...props} />;
   return <SystemsEngine {...props} />;

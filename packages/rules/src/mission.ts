@@ -37,8 +37,29 @@ export type MissionAction =
   | "acquire"
   | "assist"
   | "recover";
+/**
+ * The Glitter Boy's platform systems. Six of them and five dice, so the pilot
+ * is always choosing what the machine is not doing this round.
+ */
+export const glitterFacets = [
+  "mobility",
+  "bracing",
+  "targeting",
+  "boom",
+  "stabilizer",
+  "shield",
+] as const;
+export type GlitterFacet = (typeof glitterFacets)[number];
+/** Which facet each verb draws on. The rest are pilot work, not platform work. */
+export const facetForAction: Partial<Record<MissionAction, GlitterFacet>> = {
+  move: "mobility",
+  engage: "targeting",
+  contribute: "stabilizer",
+  recover: "shield",
+};
 export type MissionCommand =
   | { type: "share"; target?: MissionLocation | undefined }
+  | { type: "allocate"; die: string; facet: GlitterFacet | null }
   | { type: "act"; action: MissionAction; target: string; pieces: string[] }
   | { type: "request"; target: string }
   | {
@@ -76,7 +97,8 @@ export type MissionCard = {
 };
 export type MissionToken = { id: string; kind: string };
 export type MissionEngine = {
-  dice: { id: string; value: number }[];
+  /** `facet` is null while a die is still loose in the tray. */
+  dice: { id: string; value: number; facet: GlitterFacet | null }[];
   hand: MissionCard[];
   /** Safe tokens from the current push. A hazard clears them; it never joins. */
   pending: MissionToken[];
@@ -325,6 +347,16 @@ export function reachable(
   return seen;
 }
 
+/** What a group of dice is worth: a 4+ die counts double, as it always has. */
+export const diceOutput = (dice: readonly { value: number }[]): number =>
+  dice.reduce((sum, die) => sum + (die.value >= 4 ? 2 : 1), 0);
+
+/** The dice committed to one platform system. */
+export const facetDice = (
+  engine: MissionEngine,
+  facet: GlitterFacet,
+): MissionEngine["dice"] => engine.dice.filter((die) => die.facet === facet);
+
 export function hasReports(
   view: Pick<MissionPublicState, "reports">,
   location: MissionLocation,
@@ -399,6 +431,7 @@ function refill(state: MissionState, seat: Seat): void {
     p.engine.dice = Array.from({ length: 5 + bonus }, (_, i) => ({
       id: `${prefix}-die-${i}`,
       value: 1 + Math.floor(random(state) * 6),
+      facet: null,
     }));
   if (seat === "cards")
     p.engine.hand = shuffle(
@@ -599,6 +632,14 @@ function commandValid(value: unknown): value is MissionCommand {
       Array.isArray(c.pieces) &&
       c.pieces.every((p: unknown) => typeof p === "string")
     );
+  if (c.type === "allocate")
+    return (
+      Object.keys(c).length === 3 &&
+      typeof c.die === "string" &&
+      (c.facet === null ||
+        (typeof c.facet === "string" &&
+          (glitterFacets as readonly string[]).includes(c.facet)))
+    );
   if (c.type === "request")
     return Object.keys(c).length === 2 && typeof c.target === "string";
   if (c.type === "share")
@@ -645,6 +686,17 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
             : allow(
                 `One more token; ${e.bagHazards} of ${e.bagRemaining} would break the surge`,
                 `Add a hidden token to this surge. A hazard loses the whole surge, adds ${e.stress + 1} instability, and returns to the bag.`,
+              );
+      case "allocate":
+        return view.seat !== "dice"
+          ? deny("Only the dice platform allocates.")
+          : !e.dice.some((die) => die.id === command.die)
+            ? deny("That die is not in your tray.")
+            : allow(
+                "None",
+                command.facet
+                  ? `Commit that die to ${command.facet}. Allocation is free; the dice are spent when the system fires.`
+                  : "Return that die to the tray.",
               );
       case "share":
         return view.reports.some(
@@ -741,12 +793,37 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       );
     cost = `1 shared ${resource}`;
   } else if (view.seat === "dice") {
-    const die = e.dice.find((d) => d.id === pieces[0]);
-    if (pieces.length !== 1 || !die) return deny("Select one available die.");
-    const threshold = action === "engage" ? 4 : action === "assist" ? 3 : 1;
-    if (die.value < threshold)
-      return deny(`This action requires a die of ${threshold}+.`);
-    amount = die.value >= 4 ? 2 : 1;
+    const facet = facetForAction[action];
+    if (facet) {
+      // A platform system fires with everything committed to it. Engaging also
+      // fires the Boom Gun, which is only braced if a die is holding it steady.
+      const committed = facetDice(e, facet);
+      const boom = action === "engage" ? facetDice(e, "boom") : [];
+      const brace = action === "engage" ? facetDice(e, "bracing") : [];
+      const spent = [...committed, ...boom, ...brace];
+      if (!spent.length)
+        return deny(`Allocate dice to ${facet} before firing it.`);
+      if (
+        pieces.length !== spent.length ||
+        !spent.every((die) => pieces.includes(die.id))
+      )
+        return deny(`Commit everything allocated to ${facet}.`);
+      amount = diceOutput(committed);
+      if (boom.length && !brace.length)
+        return deny(
+          "The Boom Gun cannot fire unbraced. Allocate a die to bracing, or take the Boom Gun dice off.",
+        );
+      amount += diceOutput(boom) * 2;
+    } else {
+      // Pilot work rather than platform work: one loose die, as before.
+      const die = e.dice.find((d) => d.id === pieces[0] && d.facet === null);
+      if (pieces.length !== 1 || !die)
+        return deny("Select one die that is still loose in the tray.");
+      const threshold = action === "assist" ? 3 : 1;
+      if (die.value < threshold)
+        return deny(`This action requires a die of ${threshold}+.`);
+      amount = die.value >= 4 ? 2 : 1;
+    }
   } else if (view.seat === "cards") {
     const selected = e.hand.filter((c) => pieces.includes(c.id));
     if (
@@ -1062,6 +1139,11 @@ export function applyCommand(
         ];
         append(next, `${player.name} requests help with ${command.target}.`);
         break;
+      case "allocate": {
+        const die = e.dice.find((entry) => entry.id === command.die);
+        if (die) die.facet = command.facet;
+        break;
+      }
       case "hold":
         player.holding = true;
         append(next, `${player.name} holds capability and remains available.`);
@@ -1112,6 +1194,7 @@ export function applyCommand(
           e.dice.push({
             id: `dice-${next.round}-upgrade`,
             value: 1 + Math.floor(random(next) * 6),
+            facet: null,
           });
         if (seat === "systems") e.markers.push(`systems-${next.round}-upgrade`);
         if (seat === "bag") {

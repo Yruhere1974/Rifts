@@ -7,6 +7,7 @@ import {
   LocateFixed,
   Pause,
 } from "lucide-react";
+import { facetForAction } from "@rifts/rules";
 import type { MissionAction, MissionView, Seat } from "@rifts/rules";
 
 type Lesson = {
@@ -28,6 +29,9 @@ type Guidance = {
   /** The objective the player has selected, or "" for open ground. */
   selected: string;
   pieces: string[];
+  /** Raw selection, before it becomes a commitment. The dice platform stages a
+   * die here first and only then allocates it to a system. */
+  staged: string[];
   action: MissionAction;
   recipient: Seat;
   artifactOpen: boolean;
@@ -49,6 +53,15 @@ function stage(
     if (ui.selected !== want.site) return `.location-pin.${want.site}`;
   }
   if (ui.pieces.length < needed) {
+    if (view.seat === "dice") {
+      // A loose die first, then the one system it powers: pointing at every
+      // system would let a follower load the wrong one and stall.
+      const facet = facetForAction[want.action];
+      if (!facet) return '.die[aria-pressed="false"]';
+      return ui.staged.length
+        ? `.facet[data-facet="${facet}"]`
+        : '.die[aria-pressed="false"]';
+    }
     if (view.seat === "cards") return `.playing-card[aria-pressed="false"]`;
     if (view.seat === "systems")
       return '.placement-marker[aria-pressed="false"]';
@@ -92,9 +105,9 @@ const lessons: Lesson[] = [
     title: "Commit a die to the relay",
     seat: "dice",
     instruction:
-      "You are already standing in the relay chamber. Select a low die, choose Contribute, read the preview, then Commit contribute.",
+      "You are already standing in the relay chamber. Select a low die, put it in the Stabilizer system, choose Contribute, then commit.",
     consequence:
-      "The die and 2 shared Power are spent. The relay adds 1 instability now, but doubles every later breach contribution. Keep your high dice for stronger effects.",
+      "The platform has six systems and five dice, so it can never run them all. Firing a system spends everything in it. The relay adds 1 instability now but doubles every later breach contribution, and a low die is enough for it: save the 4s and better for the Boom Gun, which doubles them.",
     target: ".engine-section",
     complete: (v) => !v.shield,
     guide: (v, ui) =>
@@ -263,7 +276,7 @@ const lessons: Lesson[] = [
   {
     title: "Close Greyhaven's breach",
     instruction:
-      "Use the remaining crew capability to reach 24. Glitter Boy takes the main hall to the breach and contributes with high dice. Acquire Power or donate remaining cores when needed.",
+      "Use the remaining crew capability to reach 24. Glitter Boy allocates dice to Drive to reach the breach and to Stabilizer to close it. Acquire Power or donate remaining cores when needed.",
     consequence:
       "Need fresh pieces? Finish round for each of the four specialists; only then does the world add instability and refill all engines. Rounds 3 and 5 also grow every engine, so a longer mission gives the team more capability as well as more pressure. Crossing the map costs capability too, so plan who travels and who stays. The sixth round is the deadline.",
     target: ".objective-section",

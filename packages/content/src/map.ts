@@ -24,8 +24,10 @@ const chambers: { centre: Hex; radius: number }[] = [
 const passages: { from: Hex; to: Hex; width: number }[] = [
   // Main hall: wide enough for a large unit's full footprint.
   { from: { q: 0, r: 0 }, to: { q: 10, r: -3 }, width: 2 },
-  // Side passages: a standard unit fits, a large one does not.
-  { from: { q: 0, r: 0 }, to: { q: -12, r: 7 }, width: 1 },
+  // The gate is the mission's only fight, so the weapons platform has to be
+  // able to reach it. Wide enough for a large unit, unlike the archive.
+  { from: { q: 0, r: 0 }, to: { q: -12, r: 7 }, width: 2 },
+  // Side passage: a standard unit fits, a large one does not.
   { from: { q: 0, r: 0 }, to: { q: -5, r: -6 }, width: 1 },
 ];
 

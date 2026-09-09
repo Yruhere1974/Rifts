@@ -31,6 +31,20 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({ type: z.literal("draw") }),
   z.strictObject({
+    type: z.literal("allocate"),
+    die: target,
+    facet: z
+      .enum([
+        "mobility",
+        "bracing",
+        "targeting",
+        "boom",
+        "stabilizer",
+        "shield",
+      ])
+      .nullable(),
+  }),
+  z.strictObject({
     type: z.literal("share"),
     target: z.enum(["gate", "relay", "archive", "rift"]).optional(),
   }),

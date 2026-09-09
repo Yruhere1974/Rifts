@@ -8,9 +8,13 @@ import {
   missionSeats,
   playerView,
   previewAction,
+  diceOutput,
+  facetForAction,
   reachable,
   siteAt,
   tableView,
+  type GlitterFacet,
+  type MissionAction,
   type MissionCommand,
   type MissionLocation,
   type MissionState,
@@ -50,10 +54,45 @@ function action(
   seat: Seat,
   name: Extract<MissionCommand, { type: "act" }>["action"],
   target: string,
-  pieces = committed(state, seat),
+  pieces?: string[],
 ): MissionState {
-  return act(state, seat, { type: "act", action: name, target, pieces });
+  const ready = pieces ? { state, pieces } : armed(state, seat, name);
+  return act(ready.state, seat, {
+    type: "act",
+    action: name,
+    target,
+    pieces: ready.pieces,
+  });
 }
+/**
+ * The pieces a seat commits for an action, allocating first where the platform
+ * needs it: the dice engine fires whole systems, not single dice.
+ */
+function armed(
+  state: MissionState,
+  seat: Seat,
+  name: MissionAction,
+): { state: MissionState; pieces: string[] } {
+  if (seat !== "dice") return { state, pieces: committed(state, seat) };
+  const facet = facetForAction[name];
+  const tray = () => state.private.dice.engine.dice;
+  if (!facet) {
+    const loose = tray().find((die) => die.facet === null);
+    return { state, pieces: loose ? [loose.id] : [] };
+  }
+  if (!tray().some((die) => die.facet === facet)) {
+    const loose = tray().find((die) => die.facet === null);
+    if (loose)
+      state = act(state, "dice", { type: "allocate", die: loose.id, facet });
+  }
+  const spent = state.private.dice.engine.dice.filter(
+    (die) =>
+      die.facet === facet ||
+      (name === "engage" && (die.facet === "boom" || die.facet === "bracing")),
+  );
+  return { state, pieces: spent.map((die) => die.id) };
+}
+
 /**
  * Walks a seat to a named site. Sites are hexes apart now, so arriving is a
  * journey of several commitments rather than a single move.
@@ -97,8 +136,10 @@ function travel(state: MissionState, seat: Seat, site: MissionLocation) {
     const path: string[] = [];
     for (let at: string | null = arrival; at; at = cameFrom.get(at) ?? null)
       path.unshift(at);
+    let ready = armed(s, seat, "move");
+    s = ready.state;
     const view = playerView(s, seat);
-    const pieces = committed(s, seat);
+    const pieces = ready.pieces;
     const range =
       previewAction(view, {
         type: "act",
@@ -125,11 +166,12 @@ function travel(state: MissionState, seat: Seat, site: MissionLocation) {
         throw new Error(`${seat} is boxed in short of ${site}.`);
       step = best.key;
     }
-    s = act(s, seat, {
+    ready = armed(s, seat, "move");
+    s = act(ready.state, seat, {
       type: "act",
       action: "move",
       target: step,
-      pieces: committed(s, seat),
+      pieces: ready.pieces,
     });
   }
   throw new Error(`${seat} never reached ${site}.`);
@@ -324,6 +366,62 @@ describe("Greyhaven mission", () => {
     s = action(s, "cards", "investigate", "archive");
     expect(s.resources.power).toBe(4);
   });
+  it("makes the platform choose between moving, shooting and holding still", () => {
+    let s = createMission();
+    const tray = () => s.private.dice.engine.dice;
+    const loose = () => tray().filter((die) => die.facet === null);
+    const put = (facet: GlitterFacet) => {
+      const die = loose()[0]!;
+      s = act(s, "dice", { type: "allocate", die: die.id, facet });
+      return die;
+    };
+    const preview = (name: MissionAction, target: string, pieces: string[]) =>
+      previewAction(playerView(s, "dice"), {
+        type: "act",
+        action: name,
+        target,
+        pieces,
+      });
+
+    // A system holding nothing cannot fire.
+    expect(preview("contribute", "relay", []).reason).toContain(
+      "Allocate dice to stabilizer",
+    );
+
+    // Two dice into drive, and they are gone: reaching the fight costs the
+    // same tray the guns are drawn from.
+    put("mobility");
+    put("mobility");
+    s = travel(s, "dice", "gate");
+    expect(s.players.find((p) => p.seat === "dice")?.location).toBe("gate");
+
+    // The Boom Gun is inert until something braces it.
+    const aim = put("targeting");
+    const gun = put("boom");
+    const unbraced = [aim.id, gun.id];
+    expect(preview("engage", "gate", unbraced).reason).toContain("unbraced");
+
+    const brace = put("bracing");
+    const system = [aim.id, gun.id, brace.id];
+    // Bracing buys no output of its own; the Boom Gun doubles what it holds.
+    expect(preview("engage", "gate", system).effect).toContain(
+      `Remove ${Math.min(s.threat, diceOutput([aim]) + diceOutput([gun]) * 2)}`,
+    );
+    // Part of a system cannot be held back.
+    expect(preview("engage", "gate", unbraced).reason).toContain(
+      "Commit everything",
+    );
+
+    s = act(s, "dice", {
+      type: "act",
+      action: "engage",
+      target: "gate",
+      pieces: system,
+    });
+    // One shot consumed the whole system, bracing included.
+    expect(tray().filter((die) => system.includes(die.id))).toHaveLength(0);
+    expect(tray()).toHaveLength(0);
+  });
   it("makes card combos more efficient than singles and upgrades change output", () => {
     let s = createMission();
     const hand = s.private.cards.engine.hand;
@@ -489,7 +587,14 @@ describe("Greyhaven mission", () => {
         s = push(s, 1);
         return true;
       }
-      const pieces = committed(s, seat);
+      if (s.phase !== "action") return false;
+      const staged = armed(
+        s,
+        seat,
+        player.location === "rift" ? "contribute" : "move",
+      );
+      s = staged.state;
+      const pieces = staged.pieces;
       if (!pieces.length || pieces.some((id) => !id)) return false;
       if (player.location !== "rift") {
         const before = s;
@@ -502,11 +607,13 @@ describe("Greyhaven mission", () => {
       }
       // At the breach: fuel the contribution, or make one.
       const target = s.resources.power > 0 ? "contribute" : "acquire";
+      const ready = armed(s, seat, target);
+      s = ready.state;
       const result = applyCommand(s, seat, {
         type: "act",
         action: target,
         target: target === "contribute" ? "rift" : "power",
-        pieces: committed(s, seat),
+        pieces: ready.pieces,
       });
       if (result.error) return false;
       s = result.state;

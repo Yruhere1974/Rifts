@@ -28,6 +28,7 @@ import {
 import {
   previewAction,
   engineTier,
+  facetForAction,
   reachable,
   siteAt,
   hasReports,
@@ -203,8 +204,20 @@ export function App() {
     locations.find((item) => item.id === selectedSite) ?? locations[1]!;
   const player = view?.players.find((item) => item.seat === seat);
   // A surge is spent whole, so the Juicer never selects part of it.
+  const facet = facetForAction[action];
   const committed =
-    seat === "bag" ? (view?.engine.pending.map((t) => t.id) ?? []) : pieces;
+    seat === "bag"
+      ? (view?.engine.pending.map((t) => t.id) ?? [])
+      : seat === "dice" && facet
+        ? (view?.engine.dice ?? [])
+            .filter(
+              (die) =>
+                die.facet === facet ||
+                (action === "engage" &&
+                  (die.facet === "boom" || die.facet === "bracing")),
+            )
+            .map((die) => die.id)
+        : pieces;
   const command: MissionCommand = {
     type: "act",
     action,
@@ -343,6 +356,7 @@ export function App() {
           guidance={{
             selected: selectedSite ?? "",
             pieces: committed,
+            staged: pieces,
             action,
             recipient,
             artifactOpen: artifact,
@@ -775,6 +789,9 @@ export function App() {
                   selected={pieces}
                   onSelect={selectPiece}
                   onDraw={() => send({ type: "draw" })}
+                  onAllocate={(die, facet) =>
+                    send({ type: "allocate", die, facet })
+                  }
                   onAction={setAction}
                 />
                 <section className="advancement" aria-label="Advancement">

@@ -90,7 +90,12 @@ function footprintOffsets(size: number): { x: number; y: number }[] {
  * sliding through it. The server has already chosen the destination; this only
  * recovers the road it must have taken. Null when there is no legal road.
  */
-function road(from: Hex, to: Hex, size: number): Hex[] | null {
+function road(
+  from: Hex,
+  to: Hex,
+  size: number,
+  enemies: readonly { position: Hex }[] = [],
+): Hex[] | null {
   const goal = hexKey(to);
   const allowed = standing(size);
   const previous = new Map<string, Hex | null>([[hexKey(from), null]]);
@@ -101,6 +106,9 @@ function road(from: Hex, to: Hex, size: number): Hex[] | null {
       for (const step of hexesWithin(here, 1)) {
         const key = hexKey(step);
         if (previous.has(key) || !allowed.has(key)) continue;
+        // A patrol does not give way, so a unit never animates through one.
+        if (enemies.some((foe) => hexDistance(step, foe.position) <= size))
+          continue;
         previous.set(key, here);
         next.push(step);
       }
@@ -382,7 +390,12 @@ export function BoardCanvas({
           let path = [player.position];
           if (current && !reducedMotion) {
             const { at, into } = sample(current, now);
-            const found = road(into, player.position, player.size);
+            const found = road(
+              into,
+              player.position,
+              player.size,
+              latest.current.view?.enemies ?? [],
+            );
             const rest = found ?? [into, player.position];
             path = hexDistance(at, into) < 1e-6 ? rest : [at, ...rest];
           }

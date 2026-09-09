@@ -260,7 +260,12 @@ export function App() {
     if (!view || !me || action !== "move" || !preview?.range) return undefined;
     const others = view.players.filter((entry) => entry.seat !== seat);
     const keys = new Set<string>();
-    for (const [key] of reachable(me.position, me.size, preview.range)) {
+    for (const [key] of reachable(
+      me.position,
+      me.size,
+      preview.range,
+      view.enemies,
+    )) {
       const hex = parseHex(key);
       if (
         hex &&

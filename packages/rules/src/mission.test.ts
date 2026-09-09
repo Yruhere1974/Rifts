@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { missionMap } from "@rifts/content";
-import { hexDistance, hexKey, parseHex, type Hex } from "@rifts/shared";
+import {
+  hexDistance,
+  hexKey,
+  hexesWithin,
+  parseHex,
+  type Hex,
+} from "@rifts/shared";
 import {
   applyCommand,
   createMission,
@@ -149,7 +155,7 @@ function march(
     let arrival: string | null = null;
     while (queue.length && !arrival) {
       const here = queue.shift()!;
-      for (const [key] of reachable(here, player.size, 1)) {
+      for (const [key] of reachable(here, player.size, 1, s.enemies)) {
         if (cameFrom.has(key)) continue;
         cameFrom.set(key, hexKey(here));
         const hex = parseHex(key)!;
@@ -184,7 +190,12 @@ function march(
       // The path's near segment is occupied, so detour: any free anchor in
       // range that closes the distance will do.
       let best: { key: string; distance: number } | null = null;
-      for (const [key] of reachable(player.position, player.size, range)) {
+      for (const [key] of reachable(
+        player.position,
+        player.size,
+        range,
+        s.enemies,
+      )) {
         const hex = parseHex(key)!;
         if (!free(hex)) continue;
         const distance = hexDistance(hex, goal);
@@ -430,6 +441,77 @@ describe("Greyhaven mission", () => {
     expect(hurt.instability).toBeGreaterThan(
       worldPressure(s2.round, s2.threat),
     );
+  });
+  it("lets a patrol hold ground and the platform stand in front of it", () => {
+    const s = createMission();
+    const patrol = s.enemies.find((e) => e.id === "patrol-lead")!;
+
+    // A patrol's reach stops a move dead: you may close with it, never pass it.
+    // A real standable anchor a short walk from the patrol, not an arbitrary
+    // offset that might be solid rock.
+    const openSet = new Set(missionMap.open);
+    const from = missionMap.open
+      .map((key) => parseHex(key)!)
+      .find(
+        (hex) =>
+          hexDistance(hex, patrol.position) >= 3 &&
+          hexDistance(hex, patrol.position) <= 5 &&
+          hexesWithin(hex, 1).every((cell) => openSet.has(hexKey(cell))),
+      )!;
+    expect(from).toBeDefined();
+    const open = reachable(from, 1, 8);
+    const past = reachable(from, 1, 8, s.enemies);
+    expect(past.size).toBeLessThan(open.size);
+    // Nothing may come to rest on top of it.
+    for (const [key] of past)
+      expect(hexDistance(parseHex(key)!, patrol.position)).toBeGreaterThan(1);
+    // And the ground behind it, which is open without it, is not reachable.
+    const behind = [...open.keys()].filter(
+      (key) =>
+        hexDistance(parseHex(key)!, patrol.position) <= 2 ||
+        (!past.has(key) && open.has(key)),
+    );
+    expect(behind.length).toBeGreaterThan(0);
+
+    // Put the leader in the platform's face directly: travelling there spends
+    // the very dice the comparison is about.
+    const confront = () => {
+      const next = createMission();
+      const me = next.players.find((player) => player.seat === "dice")!;
+      next.enemies = [
+        {
+          ...next.enemies.find((enemy) => enemy.id === "patrol-lead")!,
+          position: { q: me.position.q + me.size + 1, r: me.position.r },
+        },
+      ];
+      next.threat = next.enemies[0]!.strength;
+      return next;
+    };
+
+    // Unshielded, the leader's full strength lands on the team.
+    const exposedStart = confront();
+    const exposed = round(exposedStart);
+    const exposedHit = exposed.instability - exposedStart.instability;
+    expect(exposedHit).toBeGreaterThan(0);
+
+    // Dice held in Shield are dice that did nothing else all round. That is
+    // what they buy: the platform takes the hit instead of the team.
+    let bracedStart = confront();
+    for (const die of bracedStart.private.dice.engine.dice.filter(
+      (d) => d.facet === null,
+    ))
+      bracedStart = act(bracedStart, "dice", {
+        type: "allocate",
+        die: die.id,
+        facet: "shield",
+      });
+    const braced = round(bracedStart);
+    expect(braced.instability - bracedStart.instability).toBeLessThan(
+      exposedHit,
+    );
+    expect(
+      braced.log.some((entry) => entry.text.includes("holds the line")),
+    ).toBe(true);
   });
   it("makes the platform choose between moving, shooting and holding still", () => {
     let s = createMission();

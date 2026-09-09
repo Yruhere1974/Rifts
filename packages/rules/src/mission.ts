@@ -342,15 +342,23 @@ export function siteAt(anchor: Hex, size: number): MissionLocation | null {
 }
 
 /**
- * Anchors reachable within `steps`, walking one hex at a time. Only rock
- * blocks the route: allies squeeze past one another, and a unit may simply not
- * come to rest overlapping one. Terrain still limits a large unit's routes.
+ * Anchors reachable within `steps`, walking one hex at a time.
+ *
+ * Allies squeeze past one another; rock and the opposition do not give way. A
+ * unit may not walk onto a patrol, and stepping into the reach of one ends the
+ * move there: you can close with something, but you cannot stroll past it.
+ * That is what lets a body hold a corridor.
  */
 export function reachable(
   from: Hex,
   size: number,
   steps: number,
+  enemies: readonly MissionEnemy[] = [],
 ): Map<string, number> {
+  const blocked = (hex: Hex) =>
+    enemies.some((enemy) => hexDistance(hex, enemy.position) <= size);
+  const held = (hex: Hex) =>
+    enemies.some((enemy) => hexDistance(hex, enemy.position) <= size + 1);
   const seen = new Map<string, number>([[hexKey(from), 0]]);
   let frontier: Hex[] = [from];
   for (let step = 1; step <= steps; step++) {
@@ -360,8 +368,10 @@ export function reachable(
         const key = hexKey(candidate);
         if (seen.has(key)) continue;
         if (!footprintClear(candidate, size)) continue;
+        if (blocked(candidate)) continue;
         seen.set(key, step);
-        next.push(candidate);
+        // Reached, but not walked through: a patrol's reach stops you.
+        if (!held(candidate)) next.push(candidate);
       }
     }
     frontier = next;
@@ -935,7 +945,7 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
           : "That hex is solid rock.",
       );
     const others = view.players.filter((entry) => entry.seat !== view.seat);
-    const routes = reachable(player.position, player.size, range);
+    const routes = reachable(player.position, player.size, range, view.enemies);
     const free = (hex: Hex) => !overlaps(hex, player.size, others);
     const direct = routes.get(hexKey(destination));
     if (direct !== undefined && free(destination)) {
@@ -1109,6 +1119,16 @@ function reduceWorld(
  * patrol that can reach someone hurts them; otherwise it walks toward the
  * nearest specialist, as far as its speed allows and only over open floor.
  */
+/**
+ * What a specialist can take off an incoming hit. Only the platform can stand
+ * in front of something: dice left in Shield are dice that spent the whole
+ * round doing nothing else, which is exactly what holding a line costs.
+ */
+function guardOf(state: MissionState, seat: Seat): number {
+  if (seat !== "dice") return 0;
+  return diceOutput(facetDice(state.private.dice.engine, "shield"));
+}
+
 function activateEnemies(state: MissionState): void {
   for (const enemy of state.enemies) {
     const targets = state.players;
@@ -1119,8 +1139,17 @@ function activateEnemies(state: MissionState): void {
       reach(player) < reach(closest) ? player : closest,
     );
     if (reach(nearest) <= 1) {
-      state.instability += 1;
-      append(state, `${enemy.name} is on ${nearest.name}: +1 instability.`);
+      const guard = guardOf(state, nearest.seat);
+      const damage = Math.max(0, enemy.strength - guard);
+      state.instability += damage;
+      append(
+        state,
+        damage === 0
+          ? `${nearest.name} holds the line: ${enemy.name} hits nothing.`
+          : `${enemy.name} is on ${nearest.name}: +${damage} instability${
+              guard > 0 ? ` (${guard} absorbed)` : ""
+            }.`,
+      );
       continue;
     }
     // Walk in, one hex at a time, over floor it can actually cross.

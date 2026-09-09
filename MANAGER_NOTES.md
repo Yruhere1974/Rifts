@@ -77,6 +77,14 @@ Adding a web dependency or changing `vite.config.ts` also needs the web dev serv
 
 ## In Flight
 
+- Patrols hold ground and the platform can stand in front of them, on `feature/hex-board`. A patrol blocks its own hex and its reach ends a move: you can close with one, never stroll past it, which is what lets a body hold a corridor. `reachable` takes the enemy list, and the client's reach highlight and travel animation take it too, so the board never promises a move the server refuses.
+
+- Shield earns its slot. A patrol now hits for its strength rather than a flat point, and dice left in Shield subtract from that hit. Those dice did nothing else all round, which is exactly what holding a line costs, and Recover still spends them: fix instability now, or hold the shield for the world response. Only the dice platform has a guard, which is deliberate. It is the one that can stand there.
+
+- Legacy work is parked by decision, not oversight: no persistence, no campaign, no tech tree until the game is worth keeping. The advancement panel and the per-class growth data in `packages/content` already sit where a tree would go.
+
+- Still open on the combat model: patrols have no facing, cannot be flanked, and choose their target purely by proximity. Defence as a facet does not exist separately from Shield. Whether those are worth adding is a playtest question rather than a design one.
+
 - Enemies are placed units, on `feature/hex-board`. `threat` was an abstract number at the gate; it is now two patrol units with positions, strength and speed, and `threat` survives only as a derived total so existing displays keep working. Engage names a specific enemy and requires being within reach of it, so the Boom Gun finally has something to be aimed at rather than a scalar to decrement.
 
 - Behaviour is deliberately readable, per the concept document's requirement that the opposition be reasoned about like a board game rather than guessed at. Enemies act once, at the world response: a patrol that can reach a specialist costs the team 1 instability, and otherwise walks toward the nearest one, as far as its speed allows and only over open floor. That honours the earlier decision to keep player actions simultaneous while giving the threat a slot players can plan around.

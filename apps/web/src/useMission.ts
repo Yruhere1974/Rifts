@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Client, type Room } from "@colyseus/sdk";
 import type { MissionCommand, MissionView, Seat } from "@rifts/rules";
+import { browserUuid } from "./browserUuid.js";
 
 type Mode = "practice" | "team";
 type ViewMessage = {
@@ -25,24 +26,16 @@ function closeRoom(room: Room | null): void {
   void room.leave().catch(() => undefined);
 }
 
+/**
+ * Per-tab, not per-browser: sessionStorage survives a reload but is unique to
+ * each tab, so four tabs on one machine can hold four different seats. A
+ * browser-wide key would make the server refuse the second tab's seat claim.
+ */
 function persistentClientKey(): string {
-  const existing = localStorage.getItem("rifts-client-key");
+  const existing = sessionStorage.getItem("rifts-client-key");
   if (existing) return existing;
-  // getRandomValues works on a local-network HTTP origin as well as HTTPS.
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6]! & 15) | 64;
-  bytes[8] = (bytes[8]! & 63) | 128;
-  const hex = Array.from(bytes, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  const key = [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join("-");
-  localStorage.setItem("rifts-client-key", key);
+  const key = browserUuid();
+  sessionStorage.setItem("rifts-client-key", key);
   return key;
 }
 
@@ -55,9 +48,11 @@ export function useMission(): {
   mode: Mode | null;
   onlineSeats: Seat[];
   started: boolean;
-  connect(mode: Mode, seat: Seat, roomId?: string): Promise<void>;
-  switchSeat(seat: Seat): void;
-  send(command: MissionCommand): void;
+  // Property signatures, not methods: these are stable callbacks and may be
+  // destructured from the hook result without losing their binding.
+  connect: (mode: Mode, seat: Seat, roomId?: string) => Promise<void>;
+  switchSeat: (seat: Seat) => void;
+  send: (command: MissionCommand) => void;
   leave: () => void;
 } {
   const [view, setView] = useState<MissionView | null>(null);
@@ -72,8 +67,11 @@ export function useMission(): {
   const tokenRef = useRef<string | null>(null);
   const generation = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Which room/seat this hook is already connecting to, or null when idle. */
+  const target = useRef<string | null>(null);
 
   const reset = useCallback(() => {
+    target.current = null;
     generation.current += 1;
     clearTimeout(timer.current);
     const previous = roomRef.current;
@@ -97,7 +95,12 @@ export function useMission(): {
       nextSeat: Seat = "soldier",
       id?: string,
     ) => {
+      // Two sockets for one seat race each other on the server, and the loser
+      // is whichever connection this tab happens to be rendering.
+      const wanted = `${nextMode}|${nextSeat}|${id ?? "new"}`;
+      if (target.current === wanted) return;
       reset();
+      target.current = wanted;
       const attempt = generation.current;
       setStatus("connecting");
       setError(null);
@@ -198,7 +201,8 @@ export function useMission(): {
 
   useEffect(
     () => () => {
-      generation.current += 1;
+      // Deliberately no generation bump: a remounted effect would otherwise
+      // orphan a connection that is still being established.
       clearTimeout(timer.current);
       closeRoom(roomRef.current);
       roomRef.current = null;

@@ -21,7 +21,13 @@ npm run dev:web -- --host 0.0.0.0
 
 Open **http://localhost:5174**. The game server uses port **2568**, proxied through Vite's `/game` route. These ports avoid the older local services on 5173/2567. If a port is already occupied by another application, adjust both the server/proxy configuration and Playwright configuration together.
 
-Choose **Solo table** to explore all four seats, or **Cooperative table** to create a room and share its room code. Four separate devices or browser profiles are required for the cooperative table; a browser profile retains ownership of its chosen specialist. All four must join before spending capability. Reading and requesting help are available while assembling the team.
+Choose **Solo table** to explore all four seats, or **Cooperative table** to create a room and share its room code. Seat ownership is per browser tab, so four tabs on one machine can hold four different specialists, as can four separate devices. Reloading a tab reclaims its seat; closing it releases the claim. All four must join before spending capability. Reading and requesting help are available while assembling the team.
+
+### Table Screen
+
+A cooperative room can also be mirrored on a shared screen. Open **Table screen** in the header, or visit `/?table=1&room=<code>` directly. It shows the board, objective, instability, reserves, crew status and field log, and offers a QR code per open seat so a phone can join by scanning. The table screen receives a strictly public projection: it holds no seat, sends no commands, and never receives any specialist's private engine, readings or ambition.
+
+Phones need a network address rather than `localhost`. `npm run dev:web` binds the LAN by default and prints a `Network:` URL; open the table screen at that address and the QR codes resolve for other devices. The screen warns when it is on a loopback host whose codes cannot work.
 
 ## Play
 

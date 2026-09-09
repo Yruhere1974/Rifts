@@ -4,6 +4,7 @@ import {
   applyCommand,
   createMission,
   playerView,
+  tableView,
   missionSeats,
   type Seat,
 } from "@rifts/rules";
@@ -13,7 +14,13 @@ import {
   seatMessageSchema,
 } from "./messages.js";
 
-type Session = { token: string; seat: Seat; clientKey: string };
+type Role = "player" | "table";
+type Session = {
+  token: string;
+  seat: Seat;
+  clientKey: string;
+  role: Role;
+};
 
 export class MissionRoom extends Room {
   // Never assign mission to Room.state: only filtered messages cross the wire.
@@ -31,7 +38,8 @@ export class MissionRoom extends Room {
       this.mode === "practice" ? 1 : randomInt(1, 0x100000000),
     );
     this.started = this.mode === "practice";
-    this.maxClients = this.mode === "practice" ? 1 : 4;
+    // Four seats plus shared screens, which hold no seat and send no commands.
+    this.maxClients = this.mode === "practice" ? 2 : 8;
     this.maxMessagesPerSecond = 20;
     this.setPatchRate(null);
 
@@ -42,6 +50,10 @@ export class MissionRoom extends Room {
       const session = this.sessions.get(client.sessionId);
       if (!parsed.success || !session || parsed.data.token !== session.token) {
         this.reject(client, "Invalid command or session.");
+        return;
+      }
+      if (session.role !== "player") {
+        this.reject(client, "A shared screen cannot act in the mission.");
         return;
       }
       try {
@@ -80,7 +92,7 @@ export class MissionRoom extends Room {
         this.reject(client, "Invalid seat or session.");
         return;
       }
-      if (this.mode !== "practice") {
+      if (this.mode !== "practice" || session.role !== "player") {
         this.reject(client, "Seats can only be switched in practice.");
         return;
       }
@@ -98,8 +110,13 @@ export class MissionRoom extends Room {
     if (!parsed.success || parsed.data.mode !== this.mode) {
       throw new ServerError(400, "Invalid mission options.");
     }
-    const existing = this.owners.get(parsed.data.seat);
     const clientKey = parsed.data.clientKey;
+    const role = parsed.data.role;
+    const token = randomBytes(32).toString("hex");
+    // A shared screen claims no seat, so seat ownership never applies to it.
+    if (role === "table")
+      return { token, seat: parsed.data.seat, clientKey, role };
+    const existing = this.owners.get(parsed.data.seat);
     if (existing && existing !== clientKey)
       throw new ServerError(
         403,
@@ -112,23 +129,30 @@ export class MissionRoom extends Room {
       )
     )
       throw new ServerError(403, "Your seat is fixed for this mission.");
-    return {
-      token: randomBytes(32).toString("hex"),
-      seat: parsed.data.seat,
-      clientKey,
-    };
+    return { token, seat: parsed.data.seat, clientKey, role };
   }
 
   override onJoin(client: Client, _options: unknown, auth: Session): void {
+    if (auth.role === "table") {
+      this.sessions.set(client.sessionId, auth);
+      this.sendView(client);
+      return;
+    }
     // Check and claim without awaiting so concurrent joins cannot share a seat.
-    if (
-      [...this.sessions.values()].some((session) => session.seat === auth.seat)
-    ) {
-      throw new ServerError(409, "That seat is already occupied.");
+    const holder = [...this.sessions.entries()].find(
+      ([, session]) => session.role === "player" && session.seat === auth.seat,
+    );
+    if (holder) {
+      if (holder[1].clientKey !== auth.clientKey)
+        throw new ServerError(409, "That seat is already occupied.");
+      // Same owner: a reload or reconnect reclaims its seat rather than being
+      // locked out by the session it is replacing.
+      this.sessions.delete(holder[0]);
+      this.clients.find((entry) => entry.sessionId === holder[0])?.leave(4001);
     }
     this.sessions.set(client.sessionId, auth);
     this.owners.set(auth.seat, auth.clientKey);
-    if (this.sessions.size === 4) this.started = true;
+    if (this.seated().length === 4) this.started = true;
     this.sendViews(client);
   }
 
@@ -138,12 +162,17 @@ export class MissionRoom extends Room {
     this.sendViews();
   }
 
-  private finishAbsentSeats(): void {
-    if (!this.started || this.mode !== "team" || this.sessions.size === 0)
-      return;
-    const online = new Set(
-      [...this.sessions.values()].map((session) => session.seat),
+  /** Seated players only; shared screens never gate the round or hold a seat. */
+  private seated(): Session[] {
+    return [...this.sessions.values()].filter(
+      (session) => session.role === "player",
     );
+  }
+
+  private finishAbsentSeats(): void {
+    if (!this.started || this.mode !== "team" || this.seated().length === 0)
+      return;
+    const online = new Set(this.seated().map((session) => session.seat));
     for (const seat of missionSeats) {
       if (
         !online.has(seat) &&
@@ -164,12 +193,23 @@ export class MissionRoom extends Room {
   private sendView(client: Client): void {
     const session = this.sessions.get(client.sessionId);
     if (!session) return;
+    const onlineSeats = this.seated().map((entry) => entry.seat);
+    // A distinct message type, so a table client can never render a seat view.
+    if (session.role === "table") {
+      client.send("table", {
+        view: tableView(this.mission),
+        mode: this.mode,
+        onlineSeats,
+        started: this.started,
+      });
+      return;
+    }
     client.send("view", {
       view: playerView(this.mission, session.seat),
       seat: session.seat,
       mode: this.mode,
       token: session.token,
-      onlineSeats: [...this.sessions.values()].map((entry) => entry.seat),
+      onlineSeats,
       started: this.started,
       clientKey: session.clientKey,
     });

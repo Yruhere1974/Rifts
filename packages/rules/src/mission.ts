@@ -99,6 +99,25 @@ export type MissionView = MissionPublicState & {
     text: string;
   }[];
 };
+/**
+ * What a shared screen may show. Counts and occupied modules are things
+ * everyone could see across a physical table; identities and values are not.
+ */
+export type MissionKitSummary = {
+  seat: Seat;
+  dice: number;
+  hand: number;
+  surge: number;
+  stress: number;
+  bagRemaining: number;
+  bagHazards: number;
+  markers: number;
+  slots: string[];
+};
+/** Public projection for a spectating table screen. Carries no private state. */
+export type MissionTableView = MissionPublicState & {
+  kits: MissionKitSummary[];
+};
 export type MissionPrivateState = {
   engine: MissionEngine;
   bag: MissionToken[];
@@ -401,6 +420,41 @@ export function createMission(seed = 1): MissionState {
   };
   for (const seat of missionSeats) refill(state, seat);
   return state;
+}
+export function tableView(state: MissionState): MissionTableView {
+  // Same allowlist discipline as playerView. Never spread state here: a shared
+  // screen has no seat, so anything private that leaks in is visible to all.
+  return structuredClone({
+    round: state.round,
+    phase: state.phase,
+    instability: state.instability,
+    resources: state.resources,
+    progress: state.progress,
+    requiredProgress: state.requiredProgress,
+    shield: state.shield,
+    frequencyKnown: state.frequencyKnown,
+    threat: state.threat,
+    boosts: state.boosts,
+    log: state.log,
+    players: state.players,
+    requests: state.requests,
+    reports: state.reports,
+    discoveries: state.discoveries,
+    kits: missionSeats.map((seat) => {
+      const e = state.private[seat].engine;
+      return {
+        seat,
+        dice: e.dice.length,
+        hand: e.hand.length,
+        surge: e.pending.length,
+        stress: e.stress,
+        bagRemaining: e.bagRemaining,
+        bagHazards: e.bagHazards,
+        markers: e.markers.length,
+        slots: e.slots,
+      };
+    }),
+  });
 }
 export function playerView(state: MissionState, seat: Seat): MissionView {
   if (!missionSeats.includes(seat)) throw new Error("Unknown seat.");

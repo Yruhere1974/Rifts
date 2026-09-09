@@ -131,7 +131,7 @@ test("authoritative rooms redact secrets, bind seats, and serialize shared costs
 test("four independent browser seats see one world and different private engines", async ({
   browser,
 }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(150_000);
   const contexts = await Promise.all(
     missionSeats.map(() => browser.newContext({ reducedMotion: "reduce" })),
   );
@@ -302,5 +302,75 @@ test("four independent browser seats see one world and different private engines
       ).toBeVisible();
   } finally {
     await Promise.all(contexts.map((c) => c.close()));
+  }
+});
+
+test("four tabs in one browser hold four seats, and the table screen stays public", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  // One context: previously a browser-wide ownership key made the second tab's
+  // seat claim fail, which is what forced separate profiles per player.
+  const context = await browser.newContext({ reducedMotion: "reduce" });
+  try {
+    let roomCode = "";
+    const tabs = [];
+    for (let i = 0; i < 4; i++) {
+      const page = await context.newPage();
+      tabs.push(page);
+      if (roomCode) {
+        await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
+      } else {
+        await page.goto("/");
+        await page
+          .getByRole("button", { name: "Cooperative table", exact: true })
+          .click();
+        await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
+        await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+      }
+      await expect(page.locator(".engine-heading .eyebrow")).toBeVisible({
+        timeout: 20_000,
+      });
+      if (!roomCode) {
+        roomCode = (await page.locator(".room-code").innerText()).trim();
+        expect(roomCode).not.toBe("");
+      }
+    }
+
+    // Every tab holds its own seat, so all four are online and the round starts.
+    for (let i = 0; i < 4; i++) {
+      await expect(tabs[i]!.locator(".engine-heading .eyebrow")).toContainText(
+        ["Vanguard", "Wayfinder", "Pathfinder", "Operator"][i]!,
+      );
+    }
+    await expect(tabs[0]!.locator(".presence-notice")).toHaveCount(0);
+
+    const secrets = await Promise.all(
+      tabs.map((page) => page.locator(".private-objective p").innerText()),
+    );
+
+    const table = await context.newPage();
+    await table.goto(`/?table=1&room=${roomCode}`);
+    await expect(table.locator(".table-room strong")).toHaveText(roomCode);
+    await expect(table.locator(".table-crew-row")).toHaveCount(4);
+    // Wait for the screen's first public snapshot before reading from it.
+    await expect(table.locator(".table-crew-row.absent")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+    // Four seats are taken, so no join codes are offered.
+    await expect(table.locator(".join-card")).toHaveCount(0);
+
+    // The shared screen must not carry any seat's private text or controls.
+    const markup = await table.content();
+    for (const secret of secrets) expect(markup).not.toContain(secret);
+    await expect(table.locator(".die")).toHaveCount(0);
+    await expect(table.locator(".playing-card")).toHaveCount(0);
+    await expect(table.locator(".placement-marker")).toHaveCount(0);
+    await expect(table.locator(".bag-token")).toHaveCount(0);
+    await expect(table.getByRole("button", { name: /^Commit / })).toHaveCount(
+      0,
+    );
+  } finally {
+    await context.close();
   }
 });

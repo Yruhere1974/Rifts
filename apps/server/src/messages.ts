@@ -6,6 +6,8 @@ export const joinOptionsSchema = z.object({
   mode: z.enum(["practice", "team"]),
   seat: seatSchema,
   clientKey: z.string().uuid(),
+  /** A "table" client is a shared screen: no seat, no commands, public view only. */
+  role: z.enum(["player", "table"]).default("player"),
 });
 
 const target = z.string().min(1).max(128);

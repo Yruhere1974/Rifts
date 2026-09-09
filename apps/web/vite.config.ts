@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Bind the LAN so a phone can open a QR join link from this machine.
+    host: true,
     port: 5174,
     proxy: {
       "/game": {

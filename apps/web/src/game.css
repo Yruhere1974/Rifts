@@ -2592,3 +2592,144 @@ select {
   --motion-current-color: #8fd3d05c;
   border-radius: 4px;
 }
+
+/* ---- Cockpit layout ----
+   The player's own page is a cockpit, not a copy of the table. The engine gets
+   the middle and the most room, because that is where a player actually spends
+   their attention; the map beside it is a local view of what is within reach
+   and what is beside them, and the whole board lives on the shared screen. */
+.cockpit {
+  display: grid;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr) minmax(
+      230px,
+      280px
+    );
+  align-items: stretch;
+}
+.world-layout {
+  display: contents;
+}
+.cockpit > .world-layout > .world {
+  grid-column: 1;
+  grid-row: 1;
+  border-right: 1px solid var(--line);
+}
+.cockpit > .player-area {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+.cockpit > .world-layout > .team-sidebar {
+  grid-column: 3;
+  grid-row: 1;
+  border-left: 1px solid var(--line);
+}
+/* The console now owns a column rather than a strip, so it stacks: kit above,
+   commitment below, with room left for advancement. */
+.cockpit .console-layout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  min-height: 0;
+}
+.cockpit .engine-section {
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+.cockpit .action-section {
+  border-right: 0;
+}
+/* Perception belongs with the local view, not in a third console column. */
+.cockpit .private-section {
+  grid-column: 1;
+  grid-row: 3;
+  border-top: 1px solid var(--line);
+}
+.cockpit .map-surface {
+  /* Height must come from the column's width, not the other way round: the
+     base rule fixes a height, and an aspect ratio on top of that would size
+     the map from it and overflow the rail. */
+  height: auto;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+.cockpit > .world-layout > .world {
+  overflow: hidden;
+}
+.cockpit .world-topline,
+.cockpit .round-strip {
+  padding-inline: 18px;
+}
+@media (max-width: 1180px) {
+  .cockpit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cockpit > .world-layout > .world,
+  .cockpit > .player-area,
+  .cockpit > .world-layout > .team-sidebar,
+  .cockpit .private-section {
+    grid-column: 1;
+    grid-row: auto;
+    border-left: 0;
+    border-right: 0;
+  }
+  .cockpit .map-surface {
+    aspect-ratio: auto;
+  }
+}
+
+/* ---- Advancement ----
+   What this specialist has, and what is still ahead of them. Locked entries
+   are shown rather than hidden: knowing what is coming is most of the reason
+   to want it. */
+.advancement {
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+}
+.advance-track {
+  list-style: none;
+  margin: 9px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 9px;
+}
+.advance-track li {
+  border: 1px solid var(--line);
+  border-left: 3px solid #3c4a44;
+  border-radius: 7px;
+  padding: 9px 11px;
+  background: #16201e;
+}
+.advance-track li p {
+  margin: 5px 0 0;
+  font-size: 11px;
+  color: #9fb0a4;
+}
+.advance-when {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  color: #8fa398;
+}
+.advance-track li.held {
+  border-left-color: var(--seat-color);
+}
+.advance-track li.held .advance-when {
+  color: var(--seat-color);
+}
+.advance-track li.locked {
+  opacity: 0.62;
+  border-style: dashed;
+}
+.advance-track li.offered {
+  border-left-color: #e3d797;
+}
+.advance-track li.offered .advance-when {
+  color: #e3d797;
+}
+.advance-track li.spent {
+  opacity: 0.5;
+}

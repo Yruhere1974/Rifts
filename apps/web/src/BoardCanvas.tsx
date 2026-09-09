@@ -254,6 +254,7 @@ export function BoardCanvas({
   selected,
   onSelect,
   reachable,
+  focus,
 }: {
   view: BoardView | null;
   /** Selected hex key, or "" for none. */
@@ -261,12 +262,18 @@ export function BoardCanvas({
   onSelect: (hexKey: string) => void;
   /** Hex keys the staged commitment could move to. */
   reachable?: ReadonlySet<string> | undefined;
+  /**
+   * Frame the view on one unit's surroundings instead of the whole map. The
+   * player's own page is a cockpit: what matters there is what is within reach
+   * and what is beside you, and the whole board lives on the shared screen.
+   */
+  focus?: { centre: Hex; radius: number } | undefined;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const latest = useRef({ view, selected, onSelect, reachable });
+  const latest = useRef({ view, selected, onSelect, reachable, focus });
   useEffect(() => {
-    latest.current = { view, selected, onSelect, reachable };
-  }, [view, selected, onSelect, reachable]);
+    latest.current = { view, selected, onSelect, reachable, focus };
+  }, [view, selected, onSelect, reachable, focus]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -309,17 +316,26 @@ export function BoardCanvas({
             .stroke({ color: siteColors[name] ?? 0xffffff, width: 2 });
         }
 
-        const bounds = terrain.getLocalBounds();
+        const mapBounds = terrain.getLocalBounds();
         const fit = () => {
           const pad = 12;
+          // A focused view frames one unit's surroundings; without it the whole
+          // map is fitted, which is what the shared screen wants.
+          const focus = latest.current.focus;
+          const span = focus ? (focus.radius + 1) * HEX * 3 : 0;
+          const centre = focus ? hexToPixel(focus.centre, HEX) : { x: 0, y: 0 };
+          const width = focus ? span : mapBounds.width;
+          const height = focus ? span : mapBounds.height;
+          const left = focus ? centre.x - span / 2 : mapBounds.x;
+          const top = focus ? centre.y - span / 2 : mapBounds.y;
           const scale = Math.min(
-            (app.screen.width - pad * 2) / Math.max(bounds.width, 1),
-            (app.screen.height - pad * 2) / Math.max(bounds.height, 1),
+            (app.screen.width - pad * 2) / Math.max(width, 1),
+            (app.screen.height - pad * 2) / Math.max(height, 1),
           );
           world.scale.set(scale);
           world.position.set(
-            (app.screen.width - bounds.width * scale) / 2 - bounds.x * scale,
-            (app.screen.height - bounds.height * scale) / 2 - bounds.y * scale,
+            (app.screen.width - width * scale) / 2 - left * scale,
+            (app.screen.height - height * scale) / 2 - top * scale,
           );
         };
 
@@ -339,6 +355,7 @@ export function BoardCanvas({
         let drawnSelected = "";
         let drawnReach: ReadonlySet<string> | undefined;
         let drawnWidth = 0;
+        let drawnFocus = "";
         let drawnTravel = false;
 
         const journeys = new Map<Seat, Journey>();
@@ -366,8 +383,12 @@ export function BoardCanvas({
         };
 
         app.ticker.add(() => {
-          if (drawnWidth !== app.screen.width) {
+          const focusKey = latest.current.focus
+            ? `${hexKey(latest.current.focus.centre)}/${latest.current.focus.radius}`
+            : "";
+          if (drawnWidth !== app.screen.width || drawnFocus !== focusKey) {
             drawnWidth = app.screen.width;
+            drawnFocus = focusKey;
             fit();
           }
           const state = latest.current;

@@ -16,6 +16,12 @@ export const specialistSchema = z.strictObject({
   className: z.string().min(1),
   /** Footprint radius: 0 small, 1 standard, 2 large. */
   size: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+  /**
+   * What field experience grants at each tier. Authored here so the player's
+   * advancement panel can show what is still locked ahead of them, and so a
+   * later campaign can persist the same shape without a redesign.
+   */
+  growth: z.array(z.strictObject({ at: z.number().int(), gain: z.string() })),
   flavour: z.string().min(1),
   colour: z.string().regex(/^#[0-9a-f]{6}$/),
   upgrade: z.string().min(1),
@@ -40,6 +46,16 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     familyName: "Vanguard",
     engine: "Dice allocation",
     className: "Glitter Boy",
+    growth: [
+      {
+        at: 3,
+        gain: "A sixth die every round: another commitment you can make in the same round.",
+      },
+      {
+        at: 5,
+        gain: "A seventh die. The 4+ threshold never moves, so this is breadth, not force.",
+      },
+    ],
     size: 2,
     flavour:
       "A pre-cataclysm weapons platform worn by one pilot. Every action is a decision about where its power goes.",
@@ -52,6 +68,16 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     familyName: "Wayfinder",
     engine: "Card weaving",
     className: "Ley Line Walker",
+    growth: [
+      {
+        at: 3,
+        gain: "A third Channel: another weave available in the same round.",
+      },
+      {
+        at: 5,
+        gain: "A third Resonance, so the hand can carry three full weaves.",
+      },
+    ],
     size: 1,
     flavour:
       "A mage who reads the ley network. Power comes from combining energy, shape and amplification rather than from single spells.",
@@ -64,6 +90,16 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     familyName: "Pathfinder",
     engine: "Push your luck",
     className: "Juicer",
+    growth: [
+      {
+        at: 3,
+        gain: "A jackpot enters the bag. Both hazards stay: richer, not safer.",
+      },
+      {
+        at: 5,
+        gain: "A second jackpot. The deepest pushes pay the most and risk the most.",
+      },
+    ],
     size: 1,
     flavour:
       "A body chemically driven past its safe limits. Everything is available, at a price that compounds.",
@@ -76,6 +112,16 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     familyName: "Artificer",
     engine: "Systems placement",
     className: "Techno-Wizard",
+    growth: [
+      {
+        at: 3,
+        gain: "A fifth placement marker: one more module reachable per round.",
+      },
+      {
+        at: 5,
+        gain: "A sixth marker. Modules still take one placement each, so this buys breadth.",
+      },
+    ],
     size: 1,
     flavour:
       "An engineer who builds magic into machinery. Components are placed, connected, and made to feed one another.",

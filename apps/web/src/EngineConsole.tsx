@@ -447,7 +447,7 @@ function BagEngine({ view, disabled, onDraw }: EngineProps) {
     // The band is the panel's escalation state, and the stylesheet tunes the
     // shared tremor's amplitude and tempo from it: a hum at NOMINAL, a visible
     // warning at REDLINE.
-    <div className="bag-engine motion-tremor" data-band={band}>
+    <div className="bag-engine" data-band={band}>
       <button
         ref={bagRef}
         className="draw-bag"
@@ -494,7 +494,7 @@ function BagEngine({ view, disabled, onDraw }: EngineProps) {
             </span>
           )}
         </div>
-        <div className="risk-track">
+        <div className="risk-track motion-tremor">
           <span
             key={events.burn}
             className={classes(

@@ -2161,6 +2161,9 @@ select {
   --ease-settle: cubic-bezier(0.2, 0.9, 0.25, 1);
   --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  /* Crossing ground, not arriving. A settling curve front-loads so hard that
+     a travelling piece reads as a teleport followed by a crawl. */
+  --ease-travel: cubic-bezier(0.45, 0.05, 0.55, 0.95);
 }
 
 /* Arriving: dealt, rolled, drawn. Comes down and stays down. */
@@ -2456,6 +2459,9 @@ select {
    shared tremor, so the panel hums while the odds are safe and is visibly
    restless by REDLINE. Small numbers on purpose: this has to be liveable for
    a whole round, and the odds themselves are still printed underneath. */
+/* The agitation sits on the risk indicator, never on the panel that holds the
+   Push button: a permanently moving ancestor is never stable enough to click,
+   and a control that will not hold still is the opposite of restraint. */
 .bag-engine[data-band="NOMINAL"] {
   --motion-amplitude: 0.4px;
   --motion-tempo: 2400ms;

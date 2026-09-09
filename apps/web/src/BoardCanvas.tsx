@@ -118,24 +118,25 @@ function road(from: Hex, to: Hex, size: number): Hex[] | null {
 }
 
 /**
- * The JS twin of --ease-settle in game.css, so a unit crossing the board
- * carries the same weight as a card settling into a console: it leaves with a
- * little inertia, comes to rest calmly, and never overshoots.
+ * The JS twin of --ease-travel in game.css. Travel is not arrival: a settling
+ * curve front-loads so hard that a unit covers a third of the route in the
+ * first tenth of the time, which reads as a teleport followed by a crawl. A
+ * unit crossing ground should push off, cross, and slow into place.
  */
-function easeSettle(progress: number): number {
+function easeTravel(progress: number): number {
   if (progress <= 0) return 0;
   if (progress >= 1) return 1;
-  // cubic-bezier(0.2, 0.9, 0.25, 1): solve x(u) = progress, then read y(u).
+  // cubic-bezier(0.45, 0.05, 0.55, 0.95): solve x(u) = progress, read y(u).
   const axis = (first: number, second: number, u: number) =>
     3 * first * u * (1 - u) ** 2 + 3 * second * u ** 2 * (1 - u) + u ** 3;
   let low = 0;
   let high = 1;
   for (let step = 0; step < 14; step++) {
     const mid = (low + high) / 2;
-    if (axis(0.2, 0.25, mid) < progress) low = mid;
+    if (axis(0.45, 0.55, mid) < progress) low = mid;
     else high = mid;
   }
-  return axis(0.9, 1, (low + high) / 2);
+  return axis(0.05, 0.95, (low + high) / 2);
 }
 
 /**
@@ -148,7 +149,7 @@ const travelTime = (hexes: number): number =>
   Math.min(
     MOTION.travel * Math.min(hexes, 1) +
       Math.max(hexes - 1, 0) * MOTION.instant,
-    MOTION.travel + MOTION.settle,
+    MOTION.travel * 2 + MOTION.settle,
   );
 
 /**
@@ -203,7 +204,7 @@ function sample(journey: Journey, now: number): { at: Hex; into: Hex } {
     return { at: journey.destination, into: journey.destination };
   const elapsed =
     journey.duration <= 0 ? 1 : (now - journey.startedAt) / journey.duration;
-  const covered = easeSettle(elapsed) * journey.total;
+  const covered = easeTravel(elapsed) * journey.total;
   let leg = 0;
   while (
     leg + 2 < journey.path.length &&

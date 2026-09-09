@@ -34,42 +34,49 @@ const engineRules: Record<
   cards: {
     kit: "Five cards each round: two Channel, two Resonance, and one Exploit Opening. Played cards leave your hand until the next round.",
     rules: [
-      "Any single card gives 1 effect. One Channel plus one Resonance together gives 3 effect. No other two-card combination is valid; at most two cards can be committed.",
-      "After the relay suppresses the shield, Exploit Opening gives +2 when used to Assist. Otherwise it gives 1 effect. Moving needs only one card; extra effect does not improve movement.",
+      "A weave alternates Channel and Resonance, and it runs as long as your hand can sustain it. Cards commit in the order you select them, and that order is the chain.",
+      "Length is the skill, because a weave pays more than its cards are worth apart: one gives 1, two give 3, three give 6 and four give 10. A broken chain gives nothing at all, and the thread across your hand shows whether it holds before you commit.",
+      "Exploit Opening stands in for either side of the chain, which is its second use and a real decision against saving it. On its own, after the relay suppresses the shield, it still gives +2 when used to Assist.",
+      "Hold keeps a card through the deal with the chain you are building around it. It sits out this round, which is the price, and it counts against your new hand rather than adding to it: you are buying next round's longer weave with this round's play.",
+      "Moving needs only one card; extra effect does not improve movement, so never spend a chain on a step.",
     ],
     growth:
-      "Field experience adds a Channel in round 3 and a Resonance in round 5, so the hand reaches seven cards. Each addition is another possible weave in the same round rather than a stronger single card. Keeping your core raises every weave to 4 effect.",
+      "Field experience adds a Channel in round 3 and a Resonance in round 5, so the hand reaches seven cards. Because length pays superlinearly, each addition is worth more than the last: the seventh card is what makes a weave of four possible at all. Keeping your core adds +1 to every weave.",
     cooperation:
-      "Weave cards for a strong shared contribution, or preserve Exploit Opening to support another specialist after the relay is restored. Hold keeps that response available during the same team round.",
+      "Weave long for the team's decisive contribution, or hold a card or two so next round opens with the chain already part built. Spending Exploit Opening as a wildcard keeps a chain alive; saving it keeps a response available during the same team round.",
     example:
-      "Spend Exploit Opening to Assist Techno-Wizard after the relay is restored: Techno-Wizard stores +2 support and you lose that card. Techno-Wizard's normal placement then contributes (1 + 2) x 2 = 6 stabilization at the breach, for 1 shared Power. If Techno-Wizard primed before receiving your support, add another +1 before doubling. Recover after receiving support would spend that bonus on recovery instead.",
+      "Channel, Resonance, Channel is a weave of 3 for 6 effect, against the 4 those cards are worth as a pair plus a single. Add Exploit Opening on the end as a stand-in Resonance and the same hand pays 10. Hold one Channel back instead and four fresh cards deal around it next round, opening with a link already placed.",
   },
   bag: {
     kit: "A fresh bag each round: six safe tokens and two hazards. Safe find, cache, and signal tokens each give 1 effect; their names do not restrict which action they can fund.",
     rules: [
       "Push to add a hidden token to your surge. A hazard destroys the whole surge and costs the team one instability for every token lost, plus one for each burnout already taken this round. Busting with an empty hand risked nothing, so it costs nothing.",
       "A hazard goes back into the bag; safe tokens leave it when drawn. The odds therefore only ever get worse within a round, and the band above the Push button reports them before each push.",
-      "Committing an action spends your entire surge, so push to the size the action deserves. Move once, contribute hard. With no surge you can still spend a shared resource, exactly like the other engines.",
+      "What comes out matters as much as how much. A surge of a single kind is clean and pays its own size again; a surge holding all three of find, cache and signal is a full spread and doubles. So a push is sometimes for the kind you are missing rather than for one more token.",
+      "Committing an action spends your entire surge, so push to the size and the mix the action deserves. Move once, contribute hard. With no surge you can still spend a shared resource, exactly like the other engines.",
+      "Hold keeps tokens through the refill, but holding means staying amped: you start next round with that many burns already counted against you, so the first bust of the new round costs more than it otherwise would.",
     ],
     growth:
-      "Field experience adds a jackpot to the bag in round 3 and another in round 5, and never removes a hazard. Later pushes pay more without becoming safer, which is the point. Keeping your core converts one hazard into a jackpot as well.",
+      "Field experience adds a jackpot to the bag in round 3 and another in round 5, and never removes a hazard. A jackpot counts 2 by itself and still lets a full spread double, but it breaks a clean single-kind pull. Later pushes pay more without becoming safer, which is the point. Keeping your core converts one hazard into a jackpot as well.",
     cooperation:
-      "Every action is its own decision about how far to push. A small surge for a move keeps the bag alive for a larger contribution later; one long push can produce the team's biggest single effect, or cost the round and raise instability where everyone can see it.",
+      "Every action is its own decision about how far to push, and now about what to push for. A small clean surge for a move keeps the bag alive for a larger contribution later; one long push can produce the team's biggest single effect, or cost the round and raise instability where everyone can see it.",
     example:
-      "Push three times without a hazard, then Contribute at the breach. With the relay restored that surge gives 6 stabilization for 1 shared Power. Pushing a fourth time to reach 8 risks the entire surge on odds the console shows you first.",
+      "Three pushes giving find, cache and signal is a full spread: 3 doubled to 6, where a find, a find and a cache would have been worth 3. Three finds would be clean, worth 3 + 3 = 6 as well. Pushing a fourth time for a bigger number risks the entire surge on odds the console shows you first, and can break the spread you already had.",
   },
   systems: {
     kit: "Four placement markers each round. Commit one marker per engine action. Every module accepts only one placement per round, even if you have markers left.",
     rules: [
-      "Drive = Move; Strike = Engage; Scan = Investigate; Fabricate = Contribute; Uplink = Assist; Prime = Recover; Salvage = Acquire. A normal placement gives 1 effect.",
-      "Recover with a marker primes the next non-Move placement for +1 effect. Move preserves priming. Assist can use priming, but does not spend support received from an ally. Occupied modules and markers reset next round.",
+      "The modules sit in a fixed row: Drive, Strike, Scan, Fabricate, Salvage, Uplink, Prime. They map to Move, Engage, Investigate, Contribute, Acquire, Assist and Recover in that order. A bare placement gives 1 effect.",
+      "A placement is wired to what already stands beside it: +1 for each built module directly adjacent in the row. Building a contiguous machine therefore beats scattering markers, and each empty module shows what it would pay before you spend on it.",
+      "Recover with a marker primes the next non-Move placement for +1 effect. Move preserves priming. Assist can use priming, but does not spend support received from an ally.",
+      "Hold keeps a built module standing through the rebuild, so its neighbours open next round already wired. It costs a marker from next round's supply and that module stays occupied, which is the price of starting with a machine rather than a bare row.",
     ],
     growth:
-      "Field experience adds a fifth marker in round 3 and a sixth in round 5. The seven modules still accept one placement each per round, so extra markers buy breadth across modules rather than repetition. Keeping your core adds one more.",
+      "Field experience adds a fifth marker in round 3 and a sixth in round 5. The seven modules still accept one placement each per round, so extra markers buy the reach to build a longer connected run rather than repetition. Keeping your core adds one more.",
     cooperation:
-      "Sequence Prime before Fabricate or Uplink, and request support before contributing. Placing on Fabricate at the relay uses the same module needed at the breach: another specialist can restore the relay so you keep Fabricate available.",
+      "Build outward from what stands instead of jumping across the row, sequence Prime before Fabricate or Uplink, and request support before contributing. Placing on Fabricate at the relay uses the same module needed at the breach: another specialist can restore the relay so you keep Fabricate available.",
     example:
-      "Move to the breach, place on Recover to prime, then receive +2 support. Your Contribute placement gives (1 + 1 priming + 2 support) x 2 = 8 stabilization with the relay restored, for 1 shared Power. This spends three markers across three different modules.",
+      "Place on Scan, then Salvage, then Fabricate between them: the third placement is worth 1 + 2 wired = 3 before anything else. Prime first and it is 2 + 2 = 4, so with the relay restored that Contribute gives 8 stabilization for 1 shared Power. Hold Scan and Salvage over and next round's Fabricate opens at 3 again, bought with two of next round's markers.",
   },
 };
 

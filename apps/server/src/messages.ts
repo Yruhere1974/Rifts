@@ -30,6 +30,7 @@ export const commandSchema = z.discriminatedUnion("type", [
       .refine((pieces) => new Set(pieces).size === pieces.length),
   }),
   z.strictObject({ type: z.literal("draw") }),
+  z.strictObject({ type: z.literal("keep"), piece: target }),
   z.strictObject({
     type: z.literal("allocate"),
     die: target,

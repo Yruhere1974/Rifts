@@ -174,7 +174,7 @@ const lessons: Lesson[] = [
     instruction:
       "Still as Techno-Wizard at the breach, place a marker on Recover and commit. Then Request help.",
     consequence:
-      "Recover primes your next effect for +1. Each module other than Move accepts a single placement per round, so the order you build in matters. Your request appears in the team channel.",
+      "Recover primes your next effect for +1. Each module other than Move accepts a single placement per round, and a placement is worth +1 more for each built module beside it in the row, so where you build matters as much as what you build. Your request appears in the team channel.",
     target: ".engine-section",
     complete: (v) =>
       v.log.some(
@@ -229,7 +229,7 @@ const lessons: Lesson[] = [
     instruction:
       "Switch to Juicer and Push twice. Watch the band above the button move as safe tokens leave the bag. Stop when the odds stop being worth it.",
     consequence:
-      "Each push makes the next one riskier, because safe tokens leave the bag and hazards always go back in. A hazard costs the whole surge and adds instability, and the second burnout costs more than the first. This is a real loss, not a tutorial reset.",
+      "Each push makes the next one riskier, because safe tokens leave the bag and hazards always go back in. What comes out matters too: a surge of one kind pays its own size again, and one holding find, cache and signal together doubles. A hazard costs the whole surge and adds instability, and the second burnout costs more than the first. This is a real loss, not a tutorial reset.",
     target: ".engine-section",
     complete: (v) =>
       v.log.filter((e) => e.text.includes("pushed for another surge token"))
@@ -259,7 +259,7 @@ const lessons: Lesson[] = [
     instruction:
       "Switch to Ley Line Walker. Spend cards to Move to The breach, then select a Channel and a Resonance together and Contribute.",
     consequence:
-      "A two-card weave produces 3 effect (4 if upgraded), doubled by the relay. A single card moves you further than it contributes, so the hand is spent between travelling and arriving.",
+      "A weave alternates Channel and Resonance, and length pays more than the cards are worth apart: 1, 3, 6, 10. This pair produces 3 (4 if upgraded), doubled by the relay, and the readout under your hand says what a longer chain would pay. A single card moves you further than it contributes, so the hand is spent between travelling and arriving.",
     target: ".engine-section",
     complete: (v) =>
       v.log.some(

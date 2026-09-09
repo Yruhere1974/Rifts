@@ -279,7 +279,9 @@ export function App() {
   })();
   const send = (input: MissionCommand) => {
     game.send(input);
-    setPieces([]);
+    // Holding a piece back does not spend anything, so it must not tear down
+    // the weave, surge or placement the player is part way through staging.
+    if (input.type !== "keep") setPieces([]);
   };
   const changeSeat = (next: Seat) => {
     game.switchSeat(next);
@@ -813,6 +815,7 @@ export function App() {
                   onAllocate={(die, facet) =>
                     send({ type: "allocate", die, facet })
                   }
+                  onKeep={(piece) => send({ type: "keep", piece })}
                   onAction={setAction}
                 />
                 <section className="advancement" aria-label="Advancement">

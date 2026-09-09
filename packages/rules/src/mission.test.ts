@@ -16,7 +16,11 @@ import {
   previewAction,
   coherence,
   diceOutput,
+  surgeOutput,
   systemOutput,
+  weaveOutput,
+  weaves,
+  wiring,
   facetForAction,
   worldPressure,
   reachable,
@@ -561,6 +565,100 @@ describe("Greyhaven mission", () => {
     expect(
       next.private.dice.engine.dice.filter((die) => die.facet === null),
     ).toHaveLength(4);
+  });
+
+  it("pays every engine for playing its material well", () => {
+    // Weaves are chains, and length is superlinear: the old pair falls out of
+    // the same rule rather than sitting beside it.
+    expect(weaveOutput(1)).toBe(1);
+    expect(weaveOutput(2)).toBe(3);
+    expect(weaveOutput(3)).toBe(6);
+    expect(weaves([{ kind: "channel" }, { kind: "spell" }])).toBe(true);
+    expect(weaves([{ kind: "channel" }, { kind: "channel" }])).toBe(false);
+    // Exploit Opening stands in for either side of the chain.
+    expect(
+      weaves([{ kind: "channel" }, { kind: "reaction" }, { kind: "channel" }]),
+    ).toBe(true);
+
+    // A surge is read for composition as well as size.
+    expect(surgeOutput([{ kind: "find" }, { kind: "cache" }])).toBe(2);
+    expect(surgeOutput([{ kind: "find" }, { kind: "find" }])).toBe(4);
+    expect(
+      surgeOutput([{ kind: "find" }, { kind: "cache" }, { kind: "signal" }]),
+    ).toBe(6);
+
+    // A module wired to what is already built beside it is worth more.
+    expect(wiring([], "contribute")).toBe(0);
+    expect(wiring(["investigate"], "contribute")).toBe(1);
+    expect(wiring(["investigate", "acquire"], "contribute")).toBe(2);
+  });
+
+  it("names the combination each engine just read", () => {
+    // The preview says which fit it found, in that engine's own language, so
+    // the number is never the only feedback a good play gets.
+    const cards = createMission();
+    const hand = cards.private.cards.engine.hand;
+    const channel = hand.find((card) => card.kind === "channel")!;
+    const resonance = hand.find((card) => card.kind === "spell")!;
+    expect(
+      previewAction(playerView(cards, "cards"), {
+        type: "act",
+        action: "assist",
+        target: "dice",
+        pieces: [channel.id, resonance.id],
+      }).effect,
+    ).toContain("Weave of 2.");
+
+    // A pull of one kind reads as clean; a mixed one that is not a full
+    // spread has no fit to name.
+    const bag = push(createMission(), 2);
+    const pending = bag.private.bag.engine.pending;
+    const preview = previewAction(playerView(bag, "bag"), {
+      type: "act",
+      action: "assist",
+      target: "dice",
+      pieces: pending.map((token) => token.id),
+    }).effect;
+    const kinds = new Set(pending.map((token) => token.kind));
+    expect(preview.includes("Clean surge")).toBe(kinds.size === 1);
+
+    // A module beside one that is already built says what it is wired to.
+    let systems = createMission();
+    systems = action(systems, "systems", "recover", "systems");
+    expect(
+      previewAction(playerView(systems, "systems"), {
+        type: "act",
+        action: "assist",
+        target: "dice",
+        pieces: [systems.private.systems.engine.markers[0]!],
+      }).effect,
+    ).toContain("Wired to 1 module.");
+  });
+
+  it("lets every engine carry something forward at the same price", () => {
+    // A card held back survives the refill and costs a slot in the new hand.
+    let cards = createMission();
+    const keeper = cards.private.cards.engine.hand[0]!;
+    cards = act(cards, "cards", { type: "keep", piece: keeper.id });
+    const nextCards = round(cards).private.cards.engine.hand;
+    expect(nextCards.some((card) => card.id === keeper.id)).toBe(true);
+    expect(nextCards).toHaveLength(5);
+
+    // Holding a surge over means staying amped: stress starts raised.
+    let bag = push(createMission(), 2);
+    for (const token of bag.private.bag.engine.pending)
+      bag = act(bag, "bag", { type: "keep", piece: token.id });
+    const nextBag = round(bag).private.bag.engine;
+    expect(nextBag.pending).toHaveLength(2);
+    expect(nextBag.stress).toBe(2);
+
+    // A module left standing wires its neighbours but costs a marker.
+    let systems = createMission();
+    systems = action(systems, "systems", "recover", "systems");
+    systems = act(systems, "systems", { type: "keep", piece: "recover" });
+    const nextSystems = round(systems).private.systems.engine;
+    expect(nextSystems.slots).toContain("recover");
+    expect(nextSystems.markers).toHaveLength(3);
   });
 
   it("makes the platform choose between moving, shooting and holding still", () => {

@@ -98,21 +98,21 @@ export const playableMission = playableMissionSchema.parse({
       seat: "dice",
       name: "Glitter Boy",
       engine:
-        "Allocate five dice, gaining another at rounds 3 and 5. Engage needs 4+, assist 3+. A 4+ die produces 2 effect; any die moves.",
+        "Allocate five dice across the platform's systems, gaining another at rounds 3 and 5. Firing a system spends everything in it: a 4+ die counts 2, matched faces double the system's output and a run of three or more adds its length. Held dice keep their faces into the next round.",
       upgrade: "An extra die immediately and every round.",
     },
     {
       seat: "cards",
       name: "Ley Line Walker",
       engine:
-        "Spend any card for 1 effect, or Channel + Resonance for 3. The hand grows by a Channel at round 3 and a Resonance at round 5. Exploit Opening assists for 2 after the shield is suppressed.",
-      upgrade: "Channel + Resonance produces 4 effect permanently.",
+        "Weave a chain that alternates Channel and Resonance; Exploit Opening stands in for either side. Length pays 1, 3, 6 and 10. The hand grows by a Channel at round 3 and a Resonance at round 5, and held cards survive the deal.",
+      upgrade: "Every weave produces +1 effect permanently.",
     },
     {
       seat: "bag",
       name: "Juicer",
       engine:
-        "Push a bag of eight tokens for a surge. A hazard loses the whole surge, adds escalating instability, and returns to the bag; safe tokens leave it. An action spends the entire surge. Rounds 3 and 5 add a double-value jackpot without removing either hazard.",
+        "Push a bag of eight tokens for a surge. A hazard loses the whole surge, adds escalating instability, and returns to the bag; safe tokens leave it. A surge of one kind pays its own size again and one holding all three safe kinds doubles. An action spends the entire surge. Rounds 3 and 5 add a double-value jackpot without removing either hazard.",
       upgrade:
         "Replace one hazard with a double-output jackpot now and in every future bag.",
     },
@@ -120,7 +120,7 @@ export const playableMission = playableMissionSchema.parse({
       seat: "systems",
       name: "Techno-Wizard",
       engine:
-        "Place four markers in distinct action modules, gaining another at rounds 3 and 5. Recover primes the next effect placement for +1 effect.",
+        "Place four markers in distinct action modules, gaining another at rounds 3 and 5. A placement gains +1 for each built module beside it in the row, Recover primes the next effect placement for +1, and held modules stand into the next round.",
       upgrade: "An extra placement marker immediately and every round.",
     },
   ],

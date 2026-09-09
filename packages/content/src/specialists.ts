@@ -49,11 +49,11 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     growth: [
       {
         at: 3,
-        gain: "A sixth die every round: another commitment you can make in the same round.",
+        gain: "A sixth die every round: another system live at once, and a better chance of a set or a run.",
       },
       {
         at: 5,
-        gain: "A seventh die. The 4+ threshold never moves, so this is breadth, not force.",
+        gain: "A seventh die. Enough to lock a system on with three and still crew the rest of the platform.",
       },
     ],
     size: 2,
@@ -71,19 +71,18 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     growth: [
       {
         at: 3,
-        gain: "A third Channel: another weave available in the same round.",
+        gain: "A third Channel: enough links for a weave of three, worth 6.",
       },
       {
         at: 5,
-        gain: "A third Resonance, so the hand can carry three full weaves.",
+        gain: "A third Resonance. Seven cards can carry a weave of four, worth 10.",
       },
     ],
     size: 1,
     flavour:
       "A mage who reads the ley network. Power comes from combining energy, shape and amplification rather than from single spells.",
     colour: "#b09be3",
-    upgrade:
-      "Channel + Resonance gains another +1 effect for the rest of the mission.",
+    upgrade: "Every weave gains +1 effect for the rest of the mission.",
   },
   {
     family: "bag",
@@ -93,7 +92,7 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     growth: [
       {
         at: 3,
-        gain: "A jackpot enters the bag. Both hazards stay: richer, not safer.",
+        gain: "A jackpot enters the bag: worth 2, and it never spoils a full spread. Both hazards stay.",
       },
       {
         at: 5,
@@ -115,11 +114,11 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     growth: [
       {
         at: 3,
-        gain: "A fifth placement marker: one more module reachable per round.",
+        gain: "A fifth placement marker: one more module in the run you are wiring together.",
       },
       {
         at: 5,
-        gain: "A sixth marker. Modules still take one placement each, so this buys breadth.",
+        gain: "A sixth marker. Modules still take one placement each, so this buys a longer connected machine.",
       },
     ],
     size: 1,

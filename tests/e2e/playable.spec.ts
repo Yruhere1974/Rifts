@@ -194,13 +194,19 @@ test("specialist rule references explain each engine without changing seats", as
   page,
 }) => {
   await deploy(page);
+  // Every engine is now paid for combination and can carry material forward,
+  // so each reference is checked for its own version of both.
   const clues = [
-    ["Glitter Boy", "cannot fire unbraced"],
-    ["Ley Line Walker", "No other two-card combination is valid"],
-    ["Juicer", "spends your entire surge"],
-    ["Techno-Wizard", "Every module accepts only one placement per round"],
+    ["Glitter Boy", "cannot fire unbraced", "Hold over keeps a die"],
+    ["Ley Line Walker", "Length is the skill", "Hold keeps a card"],
+    ["Juicer", "spends your entire surge", "Hold keeps tokens"],
+    [
+      "Techno-Wizard",
+      "wired to what already stands beside it",
+      "Hold keeps a built module",
+    ],
   ];
-  for (const [name, rule] of clues) {
+  for (const [name, rule, carry] of clues) {
     await seat(page, name!);
     const trigger = page.getByRole("button", {
       name: `${name} rules reference`,
@@ -208,6 +214,7 @@ test("specialist rule references explain each engine without changing seats", as
     await trigger.click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toContainText(rule!);
+    await expect(dialog).toContainText(carry!);
     await expect(
       dialog.getByRole("heading", { name: "Your place in the team" }),
     ).toBeVisible();

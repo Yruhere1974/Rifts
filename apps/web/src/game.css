@@ -988,6 +988,12 @@ select {
   outline-offset: 3px;
   transform: translateY(-3px);
 }
+/* Tokens became buttons when holding arrived, so they need their own hover:
+   the generic one washes the token out to the panel's background. */
+.bag-token:hover:not(:disabled) {
+  background-color: #8dbb9e;
+  border-color: #d7e6d7;
+}
 .risk-track {
   margin-top: 9px;
   display: flex;
@@ -1045,9 +1051,6 @@ select {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
-}
-.surge-note {
-  color: #c3b98d;
 }
 .finish-consequence {
   display: flex;
@@ -2864,4 +2867,107 @@ select {
 }
 .facet.keep .facet-output {
   color: #8fb0a0;
+}
+
+/* One vocabulary across the four consoles: gold reads "these pieces fit
+   together", dashed green reads "this survives the refill". The dice facets
+   set it above; cards, tokens and modules borrow the same two colours so a
+   player moving between seats does not have to relearn the signal. */
+.weave-read,
+.surge-note {
+  display: block;
+  font-size: 9px;
+  line-height: 1.5;
+  margin-top: 9px;
+  color: #99a2b1;
+}
+.weave-read.tuned,
+.surge-note.tuned {
+  color: #e3d797;
+}
+.surge-note.keep {
+  color: #8fb0a0;
+}
+.cards-engine {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cards-engine .card-hand {
+  min-width: 0;
+}
+.playing-card,
+.system-module {
+  position: relative;
+}
+/* The hold control sits on the piece rather than beside it: holding is a
+   property of that card, and a separate row of toggles would read as a second
+   set of pieces. */
+.hold-pip {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px dashed #6f8a7e;
+  background: #141d1c;
+  cursor: pointer;
+}
+.hold-pip:hover {
+  border-style: solid;
+  background: #2c4038;
+}
+.playing-card.held {
+  border-style: dashed;
+  border-color: #6f8a7e;
+  border-bottom-color: #6f8a7e;
+}
+.playing-card.held .hold-pip {
+  border-style: solid;
+  background: #8fb0a0;
+}
+.playing-card.held .card-bottom {
+  color: #8fb0a0;
+}
+.bag-token.held {
+  border-color: #d7e6d7;
+  border-style: dashed;
+  outline-color: #8fb0a0;
+}
+/* A held token keeps its kind visible, because composition is the read; the
+   pin is what says it survives the refill. */
+.bag-token.held::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid #dceadc;
+  background: #6f8a7e;
+}
+.bag-token {
+  position: relative;
+}
+.module-wire {
+  font-size: 7px;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  color: #e3d797;
+  min-height: 9px;
+}
+.system-module.held {
+  border-style: dashed;
+  border-color: #6f8a7e;
+}
+.system-module.held .module-wire {
+  color: #8fb0a0;
+}
+.system-module.occupied .module-wire {
+  color: #7f9c95;
+}
+.system-module.occupied:hover:not(:disabled) {
+  border-color: #8fb0a0;
 }

@@ -67,6 +67,12 @@ export const facetForAction: Partial<Record<MissionAction, GlitterFacet>> = {
 export type MissionCommand =
   | { type: "share"; target?: MissionLocation | undefined }
   | { type: "allocate"; die: string; facet: DieSlot }
+  /**
+   * Hold one piece back from this round so it survives the refill. Every
+   * engine pays the same way: what is kept is what was not spent, and it
+   * counts against next round's supply rather than adding to it.
+   */
+  | { type: "keep"; piece: string }
   | { type: "act"; action: MissionAction; target: string; pieces: string[] }
   | { type: "request"; target: string }
   | {
@@ -101,8 +107,10 @@ export type MissionCard = {
   name: string;
   description: string;
   kind: string;
+  /** Held back from this round to survive the refill. */
+  kept?: boolean;
 };
-export type MissionToken = { id: string; kind: string };
+export type MissionToken = { id: string; kind: string; kept?: boolean };
 export type MissionEngine = {
   /** `facet` is null while a die is still loose in the tray. */
   dice: { id: string; value: number; facet: DieSlot }[];
@@ -116,6 +124,8 @@ export type MissionEngine = {
   markers: string[];
   /** Occupied modules; "primed" indicates enhanced next placement. */
   slots: string[];
+  /** Modules left standing into the next round, at the cost of a marker. */
+  keptSlots: string[];
 };
 /** A placed enemy. Everyone can see it: it is standing on the board. */
 export type MissionEnemy = {
@@ -388,6 +398,86 @@ export function reachable(
 }
 
 /**
+ * A weave alternates Channel and Resonance; Exploit Opening can stand in for
+ * either, which is its second use and a real decision against holding it back
+ * as a reaction. Any single card is a weave of one.
+ */
+export function weaves(cards: readonly { kind: string }[]): boolean {
+  if (!cards.length) return false;
+  if (cards.length === 1) return true;
+  const link = (kind: string) => (kind === "reaction" ? null : kind);
+  // A wildcard takes whichever side keeps the chain alternating, so the chain
+  // is valid if some assignment of the fixed cards alternates.
+  const fixed = cards.map((card) => link(card.kind));
+  for (const start of ["channel", "spell"]) {
+    let want = start;
+    if (
+      fixed.every((kind) => {
+        const ok = kind === null || kind === want;
+        want = want === "channel" ? "spell" : "channel";
+        return ok;
+      })
+    )
+      return true;
+  }
+  return false;
+}
+
+/**
+ * Chains pay superlinearly, so length is the skill: one card is 1, two are 3
+ * as they always were, three are 6 and four are 10. The old hardcoded pair
+ * falls out of the same formula rather than sitting beside it.
+ */
+export const weaveOutput = (length: number): number =>
+  (length * (length + 1)) / 2;
+
+/**
+ * What a surge is worth. Size still counts, but composition is the read: a
+ * pull of one kind is clean and pays its own size again, and a pull holding
+ * all three safe kinds is a full spread and doubles. So a Juicer sometimes
+ * pushes for the missing kind rather than for another token.
+ */
+export function surgeOutput(tokens: readonly { kind: string }[]): number {
+  const base = tokens.reduce(
+    (sum, token) => sum + (token.kind === "jackpot" ? 2 : 1),
+    0,
+  );
+  if (tokens.length < 2) return base;
+  const kinds = new Set(tokens.map((token) => token.kind));
+  if (kinds.size === 1) return base + tokens.length;
+  return ["find", "cache", "signal"].every((kind) => kinds.has(kind))
+    ? base * 2
+    : base;
+}
+
+/**
+ * Modules sit in a fixed row, and a placement is worth more when it is wired
+ * to what is already built beside it. Building a contiguous machine therefore
+ * beats scattering markers across the board.
+ */
+export function wiring(
+  slots: readonly string[],
+  action: MissionAction,
+): number {
+  const index = moduleRow.indexOf(action);
+  if (index < 0) return 0;
+  return [moduleRow[index - 1], moduleRow[index + 1]].filter(
+    (neighbour) => neighbour && slots.includes(neighbour),
+  ).length;
+}
+
+/** The order modules are wired in, which is the order the console draws them. */
+export const moduleRow: readonly MissionAction[] = [
+  "move",
+  "engage",
+  "investigate",
+  "contribute",
+  "acquire",
+  "assist",
+  "recover",
+];
+
+/**
  * How well a system is calibrated. Matched faces lock it on and double its
  * output; consecutive faces spin it up and add the length of the run. Junk
  * still fires, just for what the dice are individually worth, so reading a
@@ -407,6 +497,42 @@ export function coherence(dice: readonly { value: number }[]): {
   if (run && faces.length >= 3)
     return { label: "spun up", apply: (base) => base + faces.length };
   return { label: null, apply: (base) => base };
+}
+
+/**
+ * How the committed pieces fit together, phrased in the engine's own terms.
+ * Every seat is paid for combination now, so the preview names the fit it
+ * found rather than leaving the player to infer it from a larger number. The
+ * console shows the same phrase live while pieces are still being chosen.
+ */
+export function combination(
+  seat: Seat,
+  engine: MissionEngine,
+  action: MissionAction,
+  pieces: readonly string[],
+): string | null {
+  if (seat === "dice") {
+    const facet = facetForAction[action];
+    if (!facet) return null;
+    const label = coherence(facetDice(engine, facet)).label;
+    return label ? `System ${label}.` : null;
+  }
+  if (seat === "cards") {
+    const chain = engine.hand.filter((card) => pieces.includes(card.id));
+    if (chain.length < 2 || !weaves(chain)) return null;
+    return `Weave of ${chain.length}.`;
+  }
+  if (seat === "bag") {
+    const tokens = engine.pending;
+    if (tokens.length < 2) return null;
+    const kinds = new Set(tokens.map((token) => token.kind));
+    if (kinds.size === 1) return `Clean surge: all ${[...kinds][0]}.`;
+    return ["find", "cache", "signal"].every((kind) => kinds.has(kind))
+      ? "Full spread."
+      : null;
+  }
+  const wired = wiring(engine.slots, action);
+  return wired ? `Wired to ${wired} module${wired === 1 ? "" : "s"}.` : null;
 }
 
 /** A system's total: what its dice are worth, then how well they fit together. */
@@ -470,10 +596,10 @@ function card(id: string, kind: string): MissionCard {
           : "Resonance",
     description:
       kind === "channel"
-        ? "Alone: 1 effect. With Resonance: 3 (upgraded: 4)."
+        ? "Links to a Resonance on either side. Chains pay 1, 3, 6, 10."
         : kind === "reaction"
-          ? "Alone: 1 effect. After relay restored: Assist gives +2."
-          : "Alone: 1 effect. Combine with Channel for 3.",
+          ? "Wildcard: takes either side of a chain. Alone, assists for +2 once the relay is restored."
+          : "Links to a Channel on either side. Chains pay 1, 3, 6, 10.",
   };
 }
 function refill(state: MissionState, seat: Seat): void {
@@ -483,7 +609,14 @@ function refill(state: MissionState, seat: Seat): void {
   const prefix = `${seat}-${state.round}`;
   // Locked dice are the ones the pilot chose not to spend. They keep their
   // faces through the refill, and the tray is topped back up around them.
+  // Every engine keeps the same way: what was held back survives the refill
+  // and counts against the new supply rather than adding to it.
   const kept = p.engine.dice.filter((die) => die.facet === "locked");
+  const keptCards = p.engine.hand.filter((card) => card.kept);
+  const keptTokens = p.engine.pending.filter((token) => token.kept);
+  const keptSlots = p.engine.keptSlots.filter((slot) =>
+    p.engine.slots.includes(slot),
+  );
   p.engine = {
     dice: [],
     hand: [],
@@ -493,6 +626,7 @@ function refill(state: MissionState, seat: Seat): void {
     stress: 0,
     markers: [],
     slots: [],
+    keptSlots: [],
   };
   const tier = engineTier(state.round);
   const bonus = tier + (upgraded ? 1 : 0);
@@ -508,20 +642,27 @@ function refill(state: MissionState, seat: Seat): void {
         }),
       ),
     ];
-  if (seat === "cards")
-    p.engine.hand = shuffle(
-      state,
-      [
-        "channel",
-        "channel",
-        "spell",
-        "spell",
-        "reaction",
-        // Growth alternates Channel and Resonance so each tier adds a weave.
-        ...(tier >= 1 ? ["channel"] : []),
-        ...(tier >= 2 ? ["spell"] : []),
-      ].map((kind, i) => card(`${prefix}-card-${i}`, kind)),
-    );
+  if (seat === "cards") {
+    const fresh = [
+      "channel",
+      "channel",
+      "spell",
+      "spell",
+      "reaction",
+      // Growth alternates Channel and Resonance so each tier adds a weave.
+      ...(tier >= 1 ? ["channel"] : []),
+      ...(tier >= 2 ? ["spell"] : []),
+    ];
+    p.engine.hand = [
+      ...keptCards,
+      ...shuffle(
+        state,
+        fresh
+          .slice(0, Math.max(0, fresh.length - keptCards.length))
+          .map((kind, i) => card(`${prefix}-card-${i}`, kind)),
+      ),
+    ];
+  }
   if (seat === "bag") {
     p.bag = shuffle(
       state,
@@ -540,12 +681,19 @@ function refill(state: MissionState, seat: Seat): void {
     );
     p.engine.bagRemaining = p.bag.length;
     p.engine.bagHazards = p.bag.filter((t) => t.kind === "hazard").length;
+    // Holding the surge over means staying amped: the round starts closer to
+    // burnout by one step for every token carried.
+    p.engine.pending = keptTokens.map((token) => ({ ...token, kept: false }));
+    p.engine.stress = keptTokens.length;
   }
-  if (seat === "systems")
+  if (seat === "systems") {
+    p.engine.slots = [...keptSlots];
+    p.engine.keptSlots = [...keptSlots];
     p.engine.markers = Array.from(
-      { length: 4 + bonus },
+      { length: Math.max(0, 4 + bonus - keptSlots.length) },
       (_, i) => `${prefix}-marker-${i}`,
     );
+  }
 }
 export function createMission(seed = 1): MissionState {
   const empty = (seat: Seat): MissionPrivateState => ({
@@ -558,6 +706,7 @@ export function createMission(seed = 1): MissionState {
       stress: 0,
       markers: [],
       slots: [],
+      keptSlots: [],
     },
     bag: [],
     intel: [
@@ -716,6 +865,8 @@ function commandValid(value: unknown): value is MissionCommand {
       Array.isArray(c.pieces) &&
       c.pieces.every((p: unknown) => typeof p === "string")
     );
+  if (c.type === "keep")
+    return Object.keys(c).length === 2 && typeof c.piece === "string";
   if (c.type === "allocate")
     return (
       Object.keys(c).length === 3 &&
@@ -774,6 +925,22 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
                   ? "Add a hidden token to this surge. Nothing is at stake yet, so a hazard costs no instability, but it returns to the bag and makes every later push worse."
                   : `Add a hidden token to this surge. A hazard loses all ${e.pending.length}, adds ${e.pending.length + e.stress} instability, and returns to the bag.`,
               );
+      case "keep": {
+        const holdable =
+          view.seat === "cards"
+            ? e.hand.some((card) => card.id === command.piece)
+            : view.seat === "bag"
+              ? e.pending.some((token) => token.id === command.piece)
+              : view.seat === "systems"
+                ? e.slots.includes(command.piece)
+                : false;
+        return !holdable
+          ? deny("That is not something you can hold over.")
+          : allow(
+              "None",
+              "Hold it back from this round so it survives the refill. What you keep counts against next round's supply rather than adding to it.",
+            );
+      }
       case "allocate":
         return view.seat !== "dice"
           ? deny("Only the dice platform allocates.")
@@ -919,22 +1086,19 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     }
   } else if (view.seat === "cards") {
     const selected = e.hand.filter((c) => pieces.includes(c.id));
+    if (pieces.length < 1 || selected.length !== pieces.length)
+      return deny("Select cards from your hand.");
+    if (!weaves(selected))
+      return deny(
+        "A weave alternates Channel and Resonance. Exploit Opening can stand in for either.",
+      );
+    amount = weaveOutput(selected.length) + (player.upgraded ? 1 : 0);
     if (
-      pieces.length < 1 ||
-      selected.length !== pieces.length ||
-      pieces.length > 2
+      selected.length === 1 &&
+      selected[0]?.kind === "reaction" &&
+      action === "assist" &&
+      !view.shield
     )
-      return deny("Select one card or a Channel and Resonance combo.");
-    if (
-      pieces.length === 2 &&
-      !(
-        selected.some((c) => c.kind === "channel") &&
-        selected.some((c) => c.kind === "spell")
-      )
-    )
-      return deny("A combo needs one Channel and one Resonance.");
-    amount = pieces.length === 2 ? (player.upgraded ? 4 : 3) : 1;
-    if (selected[0]?.kind === "reaction" && action === "assist" && !view.shield)
       amount = 2;
   } else if (view.seat === "bag") {
     // A surge is spent whole: the push sized itself when it was taken.
@@ -947,16 +1111,13 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       return deny(
         "Commit the whole surge. Part of a push cannot be held back.",
       );
-    amount = e.pending.reduce(
-      (sum, t) => sum + (t.kind === "jackpot" ? 2 : 1),
-      0,
-    );
+    amount = surgeOutput(e.pending);
   } else {
     if (pieces.length !== 1 || !e.markers.includes(pieces[0] ?? ""))
       return deny("Select one available placement marker.");
     if (action !== "move" && e.slots.includes(action))
       return deny("That action module is occupied until next round.");
-    amount = e.slots.includes("primed") ? 2 : 1;
+    amount = (e.slots.includes("primed") ? 2 : 1) + wiring(e.slots, action);
   }
   const enhanced = action !== "move" && action !== "assist";
   let discovery: MissionActionEvent["discovery"] = null;
@@ -1028,10 +1189,7 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     knowledgeCost: fallback && !reserveCost ? 1 : 0,
     reserveCost,
   };
-  const calibration =
-    view.seat === "dice" && facetForAction[action]
-      ? coherence(facetDice(e, facetForAction[action])).label
-      : null;
+  const fit = combination(view.seat, e, action, pieces);
   let effect: string;
   switch (action) {
     case "move": {
@@ -1083,11 +1241,7 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       }
       break;
   }
-  return allow(
-    cost,
-    calibration ? `${effect} System ${calibration}.` : effect,
-    event,
-  );
+  return allow(cost, fit ? `${effect} ${fit}` : effect, event);
 }
 export function previewAction(
   view: MissionView,
@@ -1327,6 +1481,17 @@ export function applyCommand(
         ];
         append(next, `${player.name} requests help with ${command.target}.`);
         break;
+      case "keep": {
+        const card = e.hand.find((entry) => entry.id === command.piece);
+        if (card) card.kept = !card.kept;
+        const token = e.pending.find((entry) => entry.id === command.piece);
+        if (token) token.kept = !token.kept;
+        if (e.slots.includes(command.piece))
+          e.keptSlots = e.keptSlots.includes(command.piece)
+            ? e.keptSlots.filter((slot) => slot !== command.piece)
+            : [...e.keptSlots, command.piece];
+        break;
+      }
       case "allocate": {
         const die = e.dice.find((entry) => entry.id === command.die);
         if (die) die.facet = command.facet;

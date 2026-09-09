@@ -376,6 +376,10 @@ export function BoardCanvas({
           // redrawing, plus one frame past the end so it lands exactly.
           const anchors = new Map<Seat, Hex>();
           let travelling = false;
+          // Leaving the table ends every journey. This component outlives a
+          // mission, so without it a fresh crew would walk from where the last
+          // one stood to their deployment hexes instead of simply being there.
+          if (!state.view) journeys.clear();
           for (const player of state.view?.players ?? []) {
             const journey = travel(player, now);
             anchors.set(player.seat, sample(journey, now).at);

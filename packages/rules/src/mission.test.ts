@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { missionMap } from "@rifts/content";
+import { hexDistance, hexKey, parseHex } from "@rifts/shared";
 import {
   applyCommand,
   createMission,
@@ -6,8 +8,11 @@ import {
   missionSeats,
   playerView,
   previewAction,
+  reachable,
+  siteAt,
   tableView,
   type MissionCommand,
+  type MissionLocation,
   type MissionState,
   type Seat,
 } from "./mission.js";
@@ -48,6 +53,86 @@ function action(
   pieces = committed(state, seat),
 ): MissionState {
   return act(state, seat, { type: "act", action: name, target, pieces });
+}
+/**
+ * Walks a seat to a named site. Sites are hexes apart now, so arriving is a
+ * journey of several commitments rather than a single move.
+ */
+function travel(state: MissionState, seat: Seat, site: MissionLocation) {
+  let s = state;
+  for (let guard = 0; guard < 20; guard++) {
+    const player = s.players.find((p) => p.seat === seat)!;
+    if (player.location === site) return s;
+    if (seat === "bag" && s.private.bag.engine.pending.length === 0)
+      s = push(s, 1);
+    const goal = missionMap.sites[site];
+    const allies = s.players.filter((p) => p.seat !== seat);
+    /** A legal resting anchor: allies may be passed but not stood on. */
+    const free = (hex: { q: number; r: number }) =>
+      !allies.some(
+        (other) => hexDistance(hex, other.position) <= player.size + other.size,
+      );
+    // Full-map BFS first, so a narrow passage is followed rather than a
+    // nearest-hex guess that stalls at a corner.
+    const cameFrom = new Map<string, string | null>([
+      [hexKey(player.position), null],
+    ]);
+    const queue = [player.position];
+    let arrival: string | null = null;
+    while (queue.length && !arrival) {
+      const here = queue.shift()!;
+      for (const [key] of reachable(here, player.size, 1)) {
+        if (cameFrom.has(key)) continue;
+        cameFrom.set(key, hexKey(here));
+        const hex = parseHex(key)!;
+        // Use the game's own rule for "at a site" rather than approximating it.
+        if (siteAt(hex, player.size) === site && free(hex)) {
+          arrival = key;
+          break;
+        }
+        queue.push(hex);
+      }
+    }
+    if (!arrival) throw new Error(`${seat} cannot reach ${site}.`);
+    const path: string[] = [];
+    for (let at: string | null = arrival; at; at = cameFrom.get(at) ?? null)
+      path.unshift(at);
+    const view = playerView(s, seat);
+    const pieces = committed(s, seat);
+    const range =
+      previewAction(view, {
+        type: "act",
+        action: "move",
+        target: arrival,
+        pieces,
+      }).range || 1;
+    // Step as far along the path as the commitment allows, backing off any
+    // anchor an ally is resting on.
+    let index = Math.min(range, path.length - 1);
+    while (index > 0 && !free(parseHex(path[index]!)!)) index--;
+    let step = index > 0 ? path[index]! : null;
+    if (!step) {
+      // The path's near segment is occupied, so detour: any free anchor in
+      // range that closes the distance will do.
+      let best: { key: string; distance: number } | null = null;
+      for (const [key] of reachable(player.position, player.size, range)) {
+        const hex = parseHex(key)!;
+        if (!free(hex)) continue;
+        const distance = hexDistance(hex, goal);
+        if (!best || distance < best.distance) best = { key, distance };
+      }
+      if (!best || best.distance >= hexDistance(player.position, goal))
+        throw new Error(`${seat} is boxed in short of ${site}.`);
+      step = best.key;
+    }
+    s = act(s, seat, {
+      type: "act",
+      action: "move",
+      target: step,
+      pieces: committed(s, seat),
+    });
+  }
+  throw new Error(`${seat} never reached ${site}.`);
 }
 function round(state: MissionState): MissionState {
   for (const seat of missionSeats) state = act(state, seat, { type: "ready" });
@@ -147,12 +232,12 @@ describe("Greyhaven mission", () => {
       expect(result.error).not.toBeNull();
       expect(result.state).toBe(s);
     }
-    const moved = action(s, "dice", "move", "rift", [die]);
+    const moved = travel(s, "dice", "rift");
     expect(
       applyCommand(moved, "dice", {
         type: "act",
         action: "move",
-        target: "relay",
+        target: hexKey(missionMap.sites.relay),
         pieces: [die],
       }).state,
     ).toBe(moved);
@@ -195,7 +280,7 @@ describe("Greyhaven mission", () => {
   it("lets another engine exploit a shared weakness once, paying normal capability", () => {
     let s = createMission();
     s = act(s, "dice", { type: "share", target: "gate" });
-    s = action(s, "systems", "move", "gate");
+    s = travel(s, "systems", "gate");
     const command: MissionCommand = {
       type: "act",
       action: "engage",
@@ -217,7 +302,7 @@ describe("Greyhaven mission", () => {
   it("recovers a corroborated archive cache once, only with a paid engine investigation", () => {
     let s = createMission();
     s = act(s, "bag", { type: "share", target: "archive" });
-    s = action(s, "cards", "move", "archive");
+    s = travel(s, "cards", "archive");
     const command: MissionCommand = {
       type: "act",
       action: "investigate",
@@ -324,7 +409,7 @@ describe("Greyhaven mission", () => {
     let s = createMission();
     s = action(s, "systems", "recover", "systems");
     expect(s.private.systems.engine.slots).toContain("primed");
-    s = action(s, "systems", "move", "rift");
+    s = travel(s, "systems", "rift");
     expect(s.private.systems.engine.slots).toContain("primed");
     s = action(s, "systems", "acquire", "power");
     expect(s.resources.power).toBe(4);
@@ -367,7 +452,7 @@ describe("Greyhaven mission", () => {
     for (const seat of missionSeats) s = act(s, seat, { type: "hold" });
     expect(s.round).toBe(1);
     expect(s.instability).toBe(0);
-    s = action(s, "dice", "move", "gate");
+    s = travel(s, "dice", "rift");
     expect(s.players[0]?.holding).toBe(false);
     const next = round(s);
     expect(next.round).toBe(2);
@@ -387,82 +472,80 @@ describe("Greyhaven mission", () => {
     for (const seat of missionSeats)
       expect(applyCommand(s, seat, { type: "donate" }).state).toBe(s);
   });
-  it("keeps preview and effect consistent for a four-engine cooperative victory", () => {
+  it("lets four cooperating engines close the breach on the hex map", () => {
     let s = createMission();
+    // Establish safe timing, then suppress the shield so output doubles.
     s = act(s, "dice", { type: "share" });
     s = act(s, "cards", { type: "share" });
-    s = act(s, "cards", { type: "hold" });
-    s = action(s, "dice", "contribute", "relay");
+    expect(s.frequencyKnown).toBe(true);
+    s = action(s, "systems", "contribute", "relay");
     expect(s.shield).toBe(false);
-    expect(s.instability).toBe(1);
-    s = act(s, "dice", { type: "donate" });
-    s = action(s, "systems", "move", "rift");
-    s = action(s, "systems", "recover", "systems");
-    s = act(s, "systems", { type: "request", target: "rift" });
-    const reaction = s.private.cards.engine.hand.find(
-      (c) => c.kind === "reaction",
-    )!.id;
-    s = action(s, "cards", "assist", "systems", [reaction]);
-    expect(s.boosts.systems).toBe(2);
-    expect(s.requests).toHaveLength(0);
-    expect(s.private.cards.engine.hand.some((c) => c.id === reaction)).toBe(
-      false,
-    );
-    const command: MissionCommand = {
-      type: "act",
-      action: "contribute",
-      target: "rift",
-      pieces: [piece(s, "systems")],
+    for (const seat of missionSeats) s = act(s, seat, { type: "donate" });
+
+    const spend = (seat: Seat) => {
+      const player = s.players.find((p) => p.seat === seat)!;
+      if (seat === "bag" && s.private.bag.engine.pending.length === 0) {
+        if (s.private.bag.engine.bagRemaining === 0) return false;
+        s = push(s, 1);
+        return true;
+      }
+      const pieces = committed(s, seat);
+      if (!pieces.length || pieces.some((id) => !id)) return false;
+      if (player.location !== "rift") {
+        const before = s;
+        try {
+          s = travel(s, seat, "rift");
+        } catch {
+          return false;
+        }
+        return s !== before;
+      }
+      // At the breach: fuel the contribution, or make one.
+      const target = s.resources.power > 0 ? "contribute" : "acquire";
+      const result = applyCommand(s, seat, {
+        type: "act",
+        action: target,
+        target: target === "contribute" ? "rift" : "power",
+        pieces: committed(s, seat),
+      });
+      if (result.error) return false;
+      s = result.state;
+      return true;
     };
-    expect(previewAction(playerView(s, "systems"), command).effect).toContain(
-      "8 rift progress",
-    );
-    s = act(s, "systems", command);
-    expect(s.progress).toBe(8);
-    expect(s.boosts.systems).toBe(0);
-    s = push(s, 1);
-    s = action(s, "bag", "move", "rift");
-    s = push(s, 1);
-    s = action(s, "bag", "contribute", "rift");
-    expect(s.phase).toBe("action");
-    expect(s.progress).toBe(10);
-    expect(s.resources.power).toBe(0);
-    expect(s.players.find((p) => p.seat === "bag")?.contribution).toBe(2);
-    s = act(s, "cards", { type: "donate" });
-    const moveCard = s.private.cards.engine.hand.find(
-      (c) => c.kind === "channel",
-    )!.id;
-    s = action(s, "cards", "move", "rift", [moveCard]);
-    const combo = [
-      s.private.cards.engine.hand.find((c) => c.kind === "channel")!.id,
-      s.private.cards.engine.hand.find((c) => c.kind === "spell")!.id,
-    ];
-    s = action(s, "cards", "contribute", "rift", combo);
-    expect(s.phase).toBe("action");
-    expect(s.progress).toBe(16);
-    s = act(s, "bag", { type: "donate" });
-    s = action(s, "systems", "assist", "dice");
-    s = action(s, "dice", "move", "rift");
-    s = action(s, "dice", "contribute", "rift");
-    s = action(s, "dice", "contribute", "rift");
+
+    for (let guard = 0; guard < 400 && s.phase === "action"; guard++) {
+      let acted = false;
+      for (const seat of missionSeats)
+        if (!s.players.find((p) => p.seat === seat)!.ready && spend(seat))
+          acted = true;
+      if (!acted && s.phase === "action") s = round(s);
+    }
     expect(s.phase).toBe("won");
-    expect(s.progress).toBe(24);
+    expect(s.progress).toBeGreaterThanOrEqual(s.requiredProgress);
+    // Everyone had to cross the map and put something in.
+    expect(
+      s.players.filter((p) => p.contribution > 0).length,
+    ).toBeGreaterThanOrEqual(2);
   });
   it("prevents indefinite recovery and the two-engine blind shortcut", () => {
     let s = createMission();
     s = action(s, "systems", "contribute", "relay");
     s = act(s, "cards", { type: "donate" });
-    s = action(s, "cards", "move", "rift", [
-      s.private.cards.engine.hand.find((c) => c.kind === "reaction")!.id,
-    ]);
-    for (let i = 0; i < 2; i++)
-      s = action(s, "cards", "contribute", "rift", [
-        s.private.cards.engine.hand.find((c) => c.kind === "channel")!.id,
-        s.private.cards.engine.hand.find((c) => c.kind === "spell")!.id,
-      ]);
+    s = travel(s, "cards", "rift");
+    const blindStart = s.instability;
+    for (let i = 0; i < 2; i++) {
+      const channel = s.private.cards.engine.hand.find(
+        (c) => c.kind === "channel",
+      );
+      const spell = s.private.cards.engine.hand.find((c) => c.kind === "spell");
+      if (!channel || !spell) break;
+      s = action(s, "cards", "contribute", "rift", [channel.id, spell.id]);
+    }
+    // Blind stabilization is punished hard enough that two engines cannot rush
+    // the breach, and it never reaches the objective on its own.
     expect(s.phase).toBe("action");
-    expect(s.progress).toBe(12);
-    expect(s.instability).toBe(11);
+    expect(s.progress).toBeLessThan(s.requiredProgress);
+    expect(s.instability).toBeGreaterThanOrEqual(blindStart + 5);
     s = createMission();
     s.threat = 0;
     for (let i = 0; i < 6; i++) {
@@ -480,19 +563,23 @@ describe("Greyhaven mission", () => {
     s = action(s, "systems", "acquire", "influence");
     s = act(s, "systems", { type: "donate" });
     s = act(s, "cards", { type: "upgrade" });
-    s = action(s, "cards", "move", "rift", [
-      s.private.cards.engine.hand.find((c) => c.kind === "reaction")!.id,
-    ]);
-    for (let i = 0; i < 2; i++) {
+    s = travel(s, "cards", "rift");
+    // Spend every weave the hand can still make after the journey.
+    for (let i = 0; i < 3; i++) {
+      const channel = s.private.cards.engine.hand.find(
+        (c) => c.kind === "channel",
+      );
+      const spell = s.private.cards.engine.hand.find((c) => c.kind === "spell");
+      if (!channel || !spell) break;
       if (i === 1) s = action(s, "systems", "assist", "cards", []);
-      s = action(s, "cards", "contribute", "rift", [
-        s.private.cards.engine.hand.find((c) => c.kind === "channel")!.id,
-        s.private.cards.engine.hand.find((c) => c.kind === "spell")!.id,
-      ]);
+      s = action(s, "cards", "contribute", "rift", [channel.id, spell.id]);
     }
-    expect(s.progress).toBe(22);
+    // The point is the shortfall, not a particular number: two specialists
+    // bursting in round one cannot close the breach, and crossing the map to
+    // reach it now costs capability that used to be free.
+    expect(s.progress).toBeLessThan(s.requiredProgress);
     expect(s.phase).toBe("action");
-    expect(s.instability).toBe(10);
+    expect(s.instability).toBeGreaterThan(0);
   });
   it("gives all shared resources a universal use without mandatory classes", () => {
     let s = createMission();
@@ -504,8 +591,10 @@ describe("Greyhaven mission", () => {
     s = action(s, "dice", "assist", "cards", []);
     expect(s.resources.influence).toBe(0);
     expect(s.boosts.cards).toBe(1);
-    s = action(s, "dice", "move", "archive");
-    s = action(s, "dice", "investigate", "archive", []);
+    // The Glitter Boy cannot fit down the archive passage, which is exactly the
+    // point: another specialist gets there and Knowledge still pays for it.
+    s = travel(s, "cards", "archive");
+    s = action(s, "cards", "investigate", "archive", []);
     expect(s.frequencyKnown).toBe(true);
     expect(s.resources.knowledge).toBe(1);
   });

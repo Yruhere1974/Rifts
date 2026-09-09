@@ -209,13 +209,12 @@ h3 {
   height: 100%;
 }
 .map-labels {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 7px;
+  margin-top: 8px;
 }
 .location-pin {
-  position: absolute;
-  transform: translate(-50%, 5px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -230,7 +229,7 @@ h3 {
   box-shadow: 0 4px 14px #07100d55;
 }
 .location-pin:active:not(:disabled) {
-  transform: translate(-50%, 6px);
+  transform: translateY(1px);
 }
 .location-pin .pin-icon {
   display: none;

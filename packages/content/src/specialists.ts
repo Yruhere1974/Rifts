@@ -14,6 +14,8 @@ export const specialistSchema = z.strictObject({
   engine: z.string().min(1),
   /** The class. Setting-specific and swappable; see docs/product/class-lineup.md. */
   className: z.string().min(1),
+  /** Footprint radius: 0 small, 1 standard, 2 large. */
+  size: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   flavour: z.string().min(1),
   colour: z.string().regex(/^#[0-9a-f]{6}$/),
   upgrade: z.string().min(1),
@@ -38,6 +40,7 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     familyName: "Vanguard",
     engine: "Dice allocation",
     className: "Glitter Boy",
+    size: 2,
     flavour:
       "A pre-cataclysm weapons platform worn by one pilot. Every action is a decision about where its power goes.",
     colour: "#e5b65c",
@@ -49,6 +52,7 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     familyName: "Wayfinder",
     engine: "Card weaving",
     className: "Ley Line Walker",
+    size: 1,
     flavour:
       "A mage who reads the ley network. Power comes from combining energy, shape and amplification rather than from single spells.",
     colour: "#b09be3",
@@ -60,6 +64,7 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     familyName: "Pathfinder",
     engine: "Push your luck",
     className: "Juicer",
+    size: 1,
     flavour:
       "A body chemically driven past its safe limits. Everything is available, at a price that compounds.",
     colour: "#73c4a1",
@@ -71,6 +76,7 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     familyName: "Artificer",
     engine: "Systems placement",
     className: "Techno-Wizard",
+    size: 1,
     flavour:
       "An engineer who builds magic into machinery. Components are placed, connected, and made to feed one another.",
     colour: "#6ab7d8",

@@ -28,13 +28,15 @@ import {
 import {
   previewAction,
   engineTier,
+  reachable,
+  siteAt,
   hasReports,
   worldPressure,
   type MissionCommand,
   type Seat,
-  type MissionLocation,
 } from "@rifts/rules";
-import { playableMission } from "@rifts/content";
+import { missionMap, playableMission } from "@rifts/content";
+import { hexDistance, hexKey, parseHex } from "@rifts/shared";
 import { BoardCanvas } from "./BoardCanvas.js";
 import { EngineConsole, identities } from "./EngineConsole.js";
 import { useMission } from "./useMission.js";
@@ -101,7 +103,8 @@ export function App() {
   const game = useMission();
   const { view, seat } = game;
   const [link] = useState(joinLink);
-  const [selected, setSelected] = useState("relay");
+  const [selected, setSelected] = useState(hexKey(missionMap.sites.relay));
+  const selectedSite = siteAt(parseHex(selected) ?? missionMap.sites.relay, 0);
   const [pieces, setPieces] = useState<string[]>([]);
   const [action, setAction] = useState<Action>("contribute");
   const [ally, setAlly] = useState<Seat>("systems");
@@ -151,7 +154,7 @@ export function App() {
   const pressure = worldPressure(view?.round ?? 1, view?.threat ?? 3);
   const tier = engineTier(view?.round ?? 1);
   const location =
-    locations.find((item) => item.id === selected) ?? locations[1]!;
+    locations.find((item) => item.id === selectedSite) ?? locations[1]!;
   const player = view?.players.find((item) => item.seat === seat);
   // A surge is spent whole, so the Juicer never selects part of it.
   const committed =
@@ -166,10 +169,31 @@ export function App() {
           ? resource
           : action === "recover"
             ? seat
-            : selected,
+            : action === "move"
+              ? selected
+              : (selectedSite ?? ""),
     pieces: committed,
   };
   const preview = view ? previewAction(view, command) : null;
+  // Where this commitment could carry the unit. The compiler memoizes this;
+  // it only recomputes when the staged move actually changes.
+  const moveReach = ((): ReadonlySet<string> | undefined => {
+    const me = view?.players.find((entry) => entry.seat === seat);
+    if (!view || !me || action !== "move" || !preview?.range) return undefined;
+    const others = view.players.filter((entry) => entry.seat !== seat);
+    const keys = new Set<string>();
+    for (const [key] of reachable(me.position, me.size, preview.range)) {
+      const hex = parseHex(key);
+      if (
+        hex &&
+        !others.some(
+          (other) => hexDistance(hex, other.position) <= me.size + other.size,
+        )
+      )
+        keys.add(key);
+    }
+    return keys;
+  })();
   const send = (input: MissionCommand) => {
     game.send(input);
     setPieces([]);
@@ -271,7 +295,7 @@ export function App() {
           view={view}
           active={tutorial}
           guidance={{
-            selected,
+            selected: selectedSite ?? "",
             pieces: committed,
             action,
             recipient,
@@ -318,15 +342,23 @@ export function App() {
               view={view}
               selected={selected}
               onSelect={setSelected}
+              reachable={moveReach}
             />
             <div className="map-labels">
               {locations.map((item) => (
                 <button
                   key={item.id}
-                  className={`location-pin ${selected === item.id ? "selected" : ""} ${item.id}`}
-                  style={{ left: `${item.x}%`, top: `${item.y}%` }}
-                  onClick={() => setSelected(item.id)}
-                  aria-pressed={selected === item.id}
+                  className={`location-pin ${selectedSite === item.id ? "selected" : ""} ${item.id}`}
+                  onClick={() =>
+                    setSelected(
+                      hexKey(
+                        missionMap.sites[
+                          item.id as keyof typeof missionMap.sites
+                        ],
+                      ),
+                    )
+                  }
+                  aria-pressed={selectedSite === item.id}
                   aria-label={item.name}
                 >
                   <span className="pin-icon">
@@ -366,17 +398,17 @@ export function App() {
                 <h2>{location.name}</h2>
               </div>
               <span className="location-presence">
-                {player?.location === selected ? "You are here" : "Remote"}
+                {player?.location === selectedSite ? "You are here" : "Remote"}
               </span>
             </div>
             <p>
-              {selected === "rift"
+              {selectedSite === "rift"
                 ? view?.frequencyKnown
                   ? "Frequency triangulated. Stabilization is safe. Each contribution consumes 1 shared Power."
                   : "Uncertain timing: blind stabilization adds 5 instability. Combine independent readings or investigate before committing."
-                : selected === "gate"
+                : selectedSite === "gate"
                   ? "The patrol adds +1 instability at each world response. Engage at the gate to remove its strength."
-                  : selected === "archive"
+                  : selectedSite === "archive"
                     ? "Investigate the records for Knowledge and safe breach timing. A known route through the noise."
                     : "An engine commitment and 2 shared Power restore the relay. Removing the shield doubles stabilization output."}
             </p>
@@ -402,7 +434,7 @@ export function App() {
                   ASSESSMENT
                 </div>
                 {view.perceptions
-                  .filter((reading) => reading.location === selected)
+                  .filter((reading) => reading.location === selectedSite)
                   .map((reading) => (
                     <div
                       className={`intel ${reading.status}`}
@@ -420,21 +452,21 @@ export function App() {
                   disabled={
                     view.phase !== "action" ||
                     view.reports.some(
-                      (r) => r.seat === seat && r.location === selected,
+                      (r) => r.seat === seat && r.location === selectedSite,
                     )
                   }
                   onClick={() =>
-                    send({ type: "share", target: selected as MissionLocation })
+                    send({ type: "share", target: selectedSite ?? "rift" })
                   }
                 >
                   <Send size={14} />{" "}
                   {view.reports.some(
-                    (r) => r.seat === seat && r.location === selected,
+                    (r) => r.seat === seat && r.location === selectedSite,
                   )
                     ? "Location assessment shared"
                     : "Share location assessment"}
                 </button>
-                {selected === "gate" &&
+                {selectedSite === "gate" &&
                   hasReports(view, "gate", ["dice", "bag"]) && (
                     <p className="discovery-note">
                       PATROL WEAKNESS /{" "}
@@ -443,7 +475,7 @@ export function App() {
                         : "Next Engage at West gate gains +1 effect. Any specialist can exploit it."}
                     </p>
                   )}
-                {selected === "archive" &&
+                {selectedSite === "archive" &&
                   hasReports(view, "archive", ["bag", "systems"]) && (
                     <p className="discovery-note">
                       POWER CACHE /{" "}
@@ -730,7 +762,9 @@ export function App() {
                 )}
                 <button
                   className="text-button"
-                  onClick={() => send({ type: "request", target: selected })}
+                  onClick={() =>
+                    send({ type: "request", target: selectedSite ?? "power" })
+                  }
                   data-tutorial="request"
                 >
                   <Radio size={13} />
@@ -980,7 +1014,7 @@ export function App() {
                   className="primary-button"
                   disabled={game.status === "connecting"}
                   onClick={() => {
-                    setSelected("relay");
+                    setSelected(hexKey(missionMap.sites.relay));
                     setPieces([]);
                     setAction("contribute");
                     setArtifact(false);

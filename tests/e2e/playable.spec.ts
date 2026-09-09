@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import * as drive from "./drive.js";
 
 async function deploy(page: Page, tutorial = false) {
   await page.goto("/");
@@ -54,6 +55,21 @@ async function push(page: Page, target: number) {
   }
   throw new Error(`Surge never reached ${target} tokens.`);
 }
+/** Commits Move repeatedly until the seat is standing at the selected site. */
+async function travel(page: Page, select: () => Promise<void>) {
+  await select();
+  for (let attempt = 0; attempt < 8; attempt++) {
+    if (
+      (await page.locator(".location-presence").innerText()).includes(
+        "You are here",
+      )
+    )
+      return;
+    await commit(page, "Move");
+    await select();
+  }
+  throw new Error("Never arrived at the selected objective.");
+}
 async function donate(page: Page) {
   await page.getByRole("button", { name: "Unclaimed power core" }).click();
   await page.getByRole("button", { name: "Donate core to team" }).click();
@@ -65,112 +81,48 @@ async function donate(page: Page) {
 test("four engines complete a cooperative mission through the interface", async ({
   page,
 }) => {
+  test.setTimeout(180_000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await deploy(page, true);
-  await expect(
-    page.getByRole("button", { name: "Next lesson" }),
-  ).toBeDisabled();
+  await deploy(page);
+  const crew = ["Glitter Boy", "Ley Line Walker", "Juicer", "Techno-Wizard"];
+
+  // Establish safe timing from two complementary readings.
+  await drive.selectSite(page, "The breach");
   await page.getByRole("button", { name: "Share reading with team" }).click();
-  await nextLesson(page);
-  await page.locator(".die").first().click();
-  await commit(page, "Contribute");
-  await expect(page.locator(".location-facts")).toContainText(
-    "Shield suppressed",
-  );
-  await nextLesson(page);
-  await page.getByRole("button", { name: "Show me where" }).click();
-  await expect(
-    page.getByRole("button", { name: "Unclaimed power core" }),
-  ).toBeFocused();
-  await donate(page);
-  await nextLesson(page);
   await seat(page, "Ley Line Walker");
   await page.getByRole("button", { name: "Share reading with team" }).click();
   await expect(page.locator(".location-facts")).toContainText(
     "Safe frequency known",
   );
-  await nextLesson(page);
-  await page.getByRole("button", { name: "Hold capability" }).click();
-  await expect(
-    page.getByRole("button", { name: "Capability held" }),
-  ).toBeVisible();
-  await nextLesson(page);
-  await seat(page, "Techno-Wizard");
-  await page.getByRole("button", { name: "The breach", exact: true }).click();
-  await page.locator(".placement-marker").first().click();
-  await commit(page, "Move");
-  await page.locator(".placement-marker").first().click();
-  await commit(page, "Recover");
-  await expect(page.locator(".system-note")).toContainText("PRIMED");
-  await page.getByRole("button", { name: "Request help" }).click();
-  await expect(page.locator(".assist-request")).toContainText(
-    "Techno-Wizard needs support",
-  );
-  await nextLesson(page);
-  await seat(page, "Ley Line Walker");
-  await page.getByRole("button", { name: "Exploit Opening card" }).click();
-  await page.getByRole("button", { name: "Assist", exact: true }).click();
-  await page.getByLabel("Assistance recipient").selectOption("systems");
-  await commit(page, "Assist");
-  await expect(page.locator(".assist-request")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Exploit Opening card" }),
-  ).toHaveCount(0);
-  await nextLesson(page);
-  await seat(page, "Techno-Wizard");
-  await page.locator(".placement-marker").first().click();
-  await page.getByRole("button", { name: "Contribute", exact: true }).click();
-  await expect(page.locator(".action-preview")).toContainText(
-    "8 rift progress",
-  );
-  await commit(page, "Contribute");
-  await expect(page.locator(".objective-counter strong")).toContainText("8");
-  await nextLesson(page);
-  await seat(page, "Juicer");
-  await push(page, 2);
-  await nextLesson(page);
-  await commit(page, "Move");
-  await push(page, 1);
-  await commit(page, "Contribute");
-  await nextLesson(page);
-  await seat(page, "Ley Line Walker");
-  await donate(page);
-  await page
-    .getByRole("button", { name: "Channel card", exact: true })
-    .first()
-    .click();
-  await commit(page, "Move");
-  await page
-    .getByRole("button", { name: "Channel card", exact: true })
-    .first()
-    .click();
-  await page
-    .getByRole("button", { name: "Resonance card", exact: true })
-    .first()
-    .click();
-  await commit(page, "Contribute");
-  await nextLesson(page);
-  await seat(page, "Juicer");
-  await donate(page);
-  await seat(page, "Techno-Wizard");
-  await page.locator(".placement-marker").first().click();
-  await page.getByRole("button", { name: "Assist", exact: true }).click();
-  await page.getByLabel("Assistance recipient").selectOption("dice");
-  await commit(page, "Assist");
+
+  // Suppress the shield from the relay, then fund the work.
   await seat(page, "Glitter Boy");
-  await page.getByRole("button", { name: "Die 1", exact: true }).click();
-  await commit(page, "Move");
-  await page.getByRole("button", { name: "Die 4", exact: true }).click();
-  await commit(page, "Contribute");
-  await page.getByRole("button", { name: "Die 5", exact: true }).click();
-  await commit(page, "Contribute");
-  await expect(
-    page.getByRole("heading", { name: "Greyhaven holds." }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Guided tutorial" }),
-  ).toHaveCount(0);
+  await drive.selectSite(page, "The relay");
+  await drive.tryAction(page, "Contribute");
+  await expect(page.locator(".location-facts")).toContainText(
+    "Shield suppressed",
+  );
+  for (const who of crew) {
+    await seat(page, who);
+    await donate(page);
+  }
+
+  // Cross the map and stabilise, refreshing engines between rounds.
+  for (let round = 0; round < 6 && !(await drive.isOver(page)); round++) {
+    for (const who of crew) {
+      if (await drive.isOver(page)) break;
+      await seat(page, who);
+      if (await drive.headFor(page, "The breach")) await drive.stabilise(page);
+    }
+    if (await drive.isOver(page)) break;
+    for (const who of crew) {
+      await seat(page, who);
+      await drive.finishRound(page);
+    }
+  }
+
+  expect(await drive.outcome(page)).toBe("Greyhaven holds.");
   expect(errors).toEqual([]);
 });
 

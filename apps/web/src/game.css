@@ -2136,3 +2136,141 @@ select {
 .table-link {
   text-decoration: none;
 }
+
+/* ---- Motion vocabulary ----
+   One shared language so the four engines and the board feel like one game.
+
+   Principles:
+   - Physical, not cartoon. Components have weight, arrive, and stay put.
+     Nothing floats, and nothing bounces more than once.
+   - Motion reveals, it never decides. The server has already resolved the
+     outcome; animation shows it landing.
+   - Motion carries information only where the rules do. Rising risk on the
+     push-your-luck engine is the one place agitation means something.
+   - Restraint. This is a tabletop, not a slot machine.
+
+   The global prefers-reduced-motion block above disables all of this, so
+   every class here degrades to a static end state on its own. */
+:root {
+  --motion-instant: 90ms;
+  --motion-quick: 180ms;
+  --motion-settle: 320ms;
+  --motion-travel: 520ms;
+  --motion-ambient: 1600ms;
+  --motion-stagger: 40ms;
+  --ease-settle: cubic-bezier(0.2, 0.9, 0.25, 1);
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* Arriving: dealt, rolled, drawn. Comes down and stays down. */
+@keyframes rifts-settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(-9px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.motion-settle {
+  animation: rifts-settle-in var(--motion-settle) var(--ease-enter) both;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+/* Seating: a deliberate placement. Snaps, does not drift. */
+@keyframes rifts-seat {
+  0% {
+    transform: scale(1.07);
+  }
+  100% {
+    transform: none;
+  }
+}
+.motion-seat {
+  animation: rifts-seat var(--motion-quick) var(--ease-settle) both;
+}
+
+/* Spending: a component leaves the kit for the world. */
+@keyframes rifts-commit-out {
+  to {
+    opacity: 0;
+    transform: translateY(5px) scale(0.92);
+  }
+}
+.motion-commit {
+  animation: rifts-commit-out var(--motion-quick) var(--ease-exit) both;
+}
+
+/* One-shot emphasis: a value changed and should be noticed once. */
+@keyframes rifts-flash {
+  0% {
+    filter: brightness(1);
+  }
+  35% {
+    filter: brightness(1.7);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+.motion-flash {
+  animation: rifts-flash var(--motion-settle) var(--ease-settle) both;
+}
+
+/* A counter taking on more. Emphasis without displacement. */
+@keyframes rifts-surge {
+  0% {
+    transform: none;
+  }
+  40% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: none;
+  }
+}
+.motion-surge {
+  animation: rifts-surge var(--motion-settle) var(--ease-settle) both;
+  transform-origin: left center;
+}
+
+/* Escalation. Amplitude is set by the caller through --motion-amplitude, so
+   the same loop reads as a hum or as a warning. */
+@keyframes rifts-tremor {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(calc(var(--motion-amplitude, 1px) * -1), 0, 0);
+  }
+  75% {
+    transform: translate3d(var(--motion-amplitude, 1px), 0, 0);
+  }
+}
+.motion-tremor {
+  animation: rifts-tremor var(--motion-tempo, var(--motion-ambient)) linear
+    infinite;
+}
+
+/* A current running through connected parts. */
+@keyframes rifts-current {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+.motion-current {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--motion-current-color, #e3d79766) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: rifts-current var(--motion-ambient) linear infinite;
+}

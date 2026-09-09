@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   Activity,
   ArrowRight,
@@ -20,6 +20,7 @@ import {
   Shield,
   Sparkles,
   Swords,
+  Tv,
   Users,
   X,
   Zap,
@@ -87,17 +88,29 @@ const actions: { id: Action; label: string; icon: typeof Zap }[] = [
   { id: "recover", label: "Recover", icon: Activity },
 ];
 
+const joinLink = (): { room: string; seat: Seat } | null => {
+  const params = new URLSearchParams(window.location.search);
+  const room = params.get("room");
+  const requested = params.get("seat");
+  return room && seats.some((s) => s === requested)
+    ? { room, seat: requested as Seat }
+    : null;
+};
+
 export function App() {
   const game = useMission();
   const { view, seat } = game;
+  const [link] = useState(joinLink);
   const [selected, setSelected] = useState("relay");
   const [pieces, setPieces] = useState<string[]>([]);
   const [action, setAction] = useState<Action>("contribute");
   const [ally, setAlly] = useState<Seat>("operator");
   const [resource, setResource] = useState("power");
-  const [lobbyMode, setLobbyMode] = useState<"practice" | "team">("practice");
-  const [lobbySeat, setLobbySeat] = useState<Seat>("soldier");
-  const [invite, setInvite] = useState("");
+  const [lobbyMode, setLobbyMode] = useState<"practice" | "team">(
+    link ? "team" : "practice",
+  );
+  const [lobbySeat, setLobbySeat] = useState<Seat>(link?.seat ?? "soldier");
+  const [invite, setInvite] = useState(link?.room ?? "");
   const [help, setHelp] = useState(false);
   const [artifact, setArtifact] = useState(false);
   const [history, setHistory] = useState(false);
@@ -126,6 +139,13 @@ export function App() {
       setRulesOpen(false);
     },
   );
+  const connect = game.connect;
+  useEffect(() => {
+    // connect() is idempotent per target, so a remounted effect reuses the
+    // connection instead of opening a second socket for the same seat.
+    if (!link) return;
+    void connect("team", link.seat, link.room);
+  }, [link, connect]);
   const identity = identities[seat];
   const recipient = ally === seat ? seats.find((s) => s !== seat)! : ally;
   const pressure = worldPressure(view?.round ?? 1, view?.threat ?? 3);
@@ -212,6 +232,18 @@ export function App() {
               {copied ? <Check size={14} /> : <Users size={14} />}
               {game.mode === "practice" ? "Solo table" : game.roomId}
             </button>
+          )}
+          {game.roomId && game.mode === "team" && (
+            <a
+              className="table-link"
+              href={`/?table=1&room=${encodeURIComponent(game.roomId)}`}
+              target="_blank"
+              rel="noreferrer"
+              title="Open the shared table screen"
+            >
+              <Tv size={14} />
+              Table screen
+            </a>
           )}
           <button
             className="icon-button"

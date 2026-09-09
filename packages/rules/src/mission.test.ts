@@ -6,6 +6,7 @@ import {
   missionSeats,
   playerView,
   previewAction,
+  tableView,
   type MissionCommand,
   type MissionState,
   type Seat,
@@ -82,6 +83,41 @@ describe("Greyhaven mission", () => {
       view.resources.power = 100;
       expect(state.resources.power).toBe(2);
     }
+  });
+  it("keeps the shared table screen free of every seat's private state", () => {
+    let s = createMission();
+    s = act(s, "scout", { type: "draw" });
+    const wire = JSON.stringify(tableView(s));
+    for (const seat of missionSeats) {
+      const p = s.private[seat];
+      expect(wire).not.toContain(p.objective);
+      for (const intel of p.intel) expect(wire).not.toContain(intel.text);
+      for (const reading of Object.values(playerView(s, seat).perceptions))
+        expect(wire).not.toContain(reading.text);
+      for (const die of p.engine.dice) expect(wire).not.toContain(die.id);
+      for (const c of p.engine.hand) expect(wire).not.toContain(c.id);
+      for (const t of [...p.bag, ...p.engine.pending])
+        expect(wire).not.toContain(t.id);
+      for (const m of p.engine.markers) expect(wire).not.toContain(m);
+    }
+    const view = tableView(s);
+    expect(view).not.toHaveProperty("private");
+    expect(view).not.toHaveProperty("random");
+    expect(view).not.toHaveProperty("engine");
+    expect(view).not.toHaveProperty("intel");
+    expect(view).not.toHaveProperty("perceptions");
+    // Counts and placements are table-visible; identities and values are not.
+    const kit = (seat: Seat) => view.kits.find((k) => k.seat === seat)!;
+    expect(kit("soldier").dice).toBe(5);
+    expect(kit("mage").hand).toBe(5);
+    expect(kit("scout").bagHazards).toBe(2);
+    expect(kit("operator").markers).toBe(4);
+    expect(view.kits.find((k) => k.seat === "scout")?.surge).toBe(
+      s.private.scout.engine.pending.length,
+    );
+    expect(view.progress).toBe(s.progress);
+    view.resources.power = 99;
+    expect(s.resources.power).toBe(2);
   });
   it("combines shared clues into safe timing without bypassing the shield", () => {
     let s = createMission();

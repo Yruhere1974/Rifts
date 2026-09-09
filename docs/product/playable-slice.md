@@ -52,6 +52,12 @@ Each specialist starts with one core. Donating gives two shared Power and perman
 
 All shared resources have universal uses. Power fuels projects. Knowledge can substitute for an investigative engine action. One Materiel can substitute for a one-point recovery. One Influence can substitute for one-point assistance. These alternatives neither occupy an Operator module nor prime it; the preview distinguishes their cost from personal components.
 
+## Screens And Seats
+
+Seat ownership is per browser tab. The ownership key lives in `sessionStorage`, so a reload reclaims the same seat and a new tab is a new player; four tabs on one machine can therefore hold four specialists. The server lets a client reclaim a seat it already owns rather than locking it out of its own session, and `useMission` refuses to open a second socket for a target it is already connecting to, so a remounted client cannot race itself for its own seat.
+
+A room may also carry shared screens. A client joining with `role: "table"` claims no seat, cannot send commands or switch seats, is excluded from the four-player start gate and from absent-seat forfeiture, and receives `tableView()` rather than `playerView()`. That projection is built with the same explicit allowlist and carries only public state plus per-seat counts and occupied modules, which are things everyone can already see across a physical table. Identities and values, private readings, ambitions and unshared perceptions never reach it. The table screen renders join QR codes for unclaimed seats pointing at `/?room=<code>&seat=<seat>`.
+
 ## Cooperation And Time
 
 There is no active-player lock. Any connected specialist may inspect, select, act, publish information, request assistance, or hold during the common action phase. The server serializes commitments and revalidates costs against the latest state.
@@ -64,7 +70,7 @@ Hold preserves capability without advancing the round or blocking later action. 
 
 `tests/e2e/playable.spec.ts` completes the mission entirely through visible controls in solo-table mode, demonstrates upgrades and loss, and checks all four consoles at desktop/mobile widths. It also checks rendered canvas pixels, horizontal overflow, action-label fit, and modal focus containment.
 
-`tests/e2e/multiplayer.spec.ts` completes a shared victory using four independent browser contexts with different engines and private readings. Separate SDK clients verify actual network snapshots, unauthorized seat switching, reserved-seat rejoining, forged commands, initial four-player gating, and simultaneous attempts to consume the same two Power.
+`tests/e2e/multiplayer.spec.ts` completes a shared victory using four independent browser contexts with different engines and private readings. Separate SDK clients verify actual network snapshots, unauthorized seat switching, reserved-seat rejoining, forged commands, initial four-player gating, and simultaneous attempts to consume the same two Power. A further browser test seats four specialists in four tabs of one context and checks that a shared table screen carries no seat's private text and none of the four engines' controls.
 
 `packages/rules/src/mission.test.ts` covers deterministic seeds, immutable invalid commands, private-state allowlisting, action economy, combinations, whole-surge commitment, compounding bag burnout, per-round engine growth, occupied modules, shared-resource alternatives, upgrades, hold/finish, escalating loss, and cooperative victory. Regression cases cover the reviewer-discovered two-engine opening and its Influence-funded variation.
 

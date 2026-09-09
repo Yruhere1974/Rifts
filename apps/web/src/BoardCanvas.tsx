@@ -1,6 +1,15 @@
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics } from "pixi.js";
-import type { MissionView } from "@rifts/rules";
+import type { MissionPublicState, Seat } from "@rifts/rules";
+
+/**
+ * Exactly the fields the board draws. Both a seat view and the public table
+ * view satisfy it, so a shared screen can render the same map without a seat.
+ */
+export type BoardView = Pick<
+  MissionPublicState,
+  "phase" | "shield" | "threat" | "players"
+> & { seat?: Seat };
 
 const sites = {
   gate: [200, 390],
@@ -19,7 +28,7 @@ export function BoardCanvas({
   selected,
   onSelect,
 }: {
-  view: MissionView | null;
+  view: BoardView | null;
   selected: string;
   onSelect: (id: string) => void;
 }) {
@@ -201,7 +210,7 @@ export function BoardCanvas({
           .ellipse(750, 228, 45, 29)
           .stroke({ color: 0xd8aed1, width: 3 });
         dynamic.addChild(glow);
-        let drawnView: MissionView | null | undefined;
+        let drawnView: BoardView | null | undefined;
         let drawnSelected = "";
         app.ticker.maxFPS = reducedMotion ? 10 : 30;
         app.ticker.add(() => {

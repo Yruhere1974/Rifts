@@ -39,6 +39,7 @@ import { missionMap, playableMission } from "@rifts/content";
 import { hexDistance, hexKey, parseHex } from "@rifts/shared";
 import { BoardCanvas } from "./BoardCanvas.js";
 import { EngineConsole, identities } from "./EngineConsole.js";
+import { staggerDelay, useArrivals, usePrevious, usePulse } from "./motion.js";
 import { useMission } from "./useMission.js";
 import { useModalFocus } from "./useModalFocus.js";
 import { Tutorial } from "./Tutorial.js";
@@ -150,6 +151,51 @@ export function App() {
     void connect("team", link.seat, link.room);
   }, [link, connect]);
   const identity = identities[seat];
+  // The shared sidebar only ever receives whole snapshots, so it diffs the few
+  // values the rules actually care about and replays a one-shot cue on each.
+  // Every diff is taken against `view` rather than the value alone: joining a
+  // table in progress is not the team gaining ground, and must stay silent.
+  const progress = view?.progress ?? 0;
+  const previousProgress = usePrevious(view ? progress : undefined);
+  // The first cell of a gain, and the anchor for its left-to-right cascade.
+  const progressFrom =
+    previousProgress !== undefined && progress > previousProgress
+      ? previousProgress
+      : progress;
+  const progressPulse = usePulse(progress);
+  const instability = view?.instability ?? 0;
+  const previousInstability = usePrevious(view ? instability : undefined);
+  const escalating =
+    previousInstability !== undefined && instability > previousInstability;
+  const instabilityPulse = usePulse(instability);
+  const round = view?.round ?? 1;
+  const previousRound = usePrevious(view ? round : undefined);
+  const roundTurned = previousRound !== undefined && round !== previousRound;
+  const roundPulse = usePulse(round);
+  // Traffic on the team channel and support landing on a seat: both are things
+  // a teammate did to you, so they arrive rather than simply appear.
+  const commsIds = [
+    ...(view?.requests.map((entry) => `request:${entry.seat}`) ?? []),
+    ...(view?.reports.map(
+      (entry) => `report:${entry.seat}-${entry.location}`,
+    ) ?? []),
+  ];
+  const commsArrivals = useArrivals(commsIds);
+  const boostArrivals = useArrivals(
+    seats
+      .filter((role) => (view?.boosts[role] ?? 0) > 0)
+      .map((role) => `${role}:${view?.boosts[role] ?? 0}`),
+  );
+  const freshComms = commsIds.filter((id) => commsArrivals.has(id));
+  const arrived = (id: string) => commsArrivals.has(id);
+  // Cascade only across the entries that landed together, so a long feed never
+  // delays a single new report by its position in the list.
+  const arrivalDelay = (id: string): CSSProperties | undefined =>
+    arrived(id)
+      ? ({
+          "--motion-delay": `${staggerDelay(freshComms.indexOf(id))}ms`,
+        } as CSSProperties)
+      : undefined;
   const recipient = ally === seat ? seats.find((s) => s !== seat)! : ally;
   const pressure = worldPressure(view?.round ?? 1, view?.threat ?? 3);
   const tier = engineTier(view?.round ?? 1);
@@ -497,8 +543,13 @@ export function App() {
             <h2>Close the breach.</h2>
             <p>Keep Greyhaven standing.</p>
             <div className="objective-counter">
-              <strong>
-                {view?.progress ?? 0}
+              {/* Keyed on the pulse so a gain replays the surge even when the
+                  counter is already mid-animation from the previous one. */}
+              <strong
+                key={progressPulse}
+                className={progressFrom < progress ? "motion-surge" : undefined}
+              >
+                {progress}
                 <small>
                   {" "}
                   / {view?.requiredProgress ?? playableMission.requiredProgress}
@@ -512,30 +563,53 @@ export function App() {
                   length:
                     view?.requiredProgress ?? playableMission.requiredProgress,
                 },
-                (_, i) => (
-                  <i
-                    key={i}
-                    className={i < (view?.progress ?? 0) ? "filled" : ""}
-                  />
-                ),
+                (_, i) => {
+                  const lit = i >= progressFrom && i < progress;
+                  return (
+                    <i
+                      key={lit ? `${i}-${progressPulse}` : i}
+                      className={
+                        lit
+                          ? "filled motion-ignite"
+                          : i < progress
+                            ? "filled"
+                            : ""
+                      }
+                      style={
+                        lit
+                          ? ({
+                              "--motion-delay": `${staggerDelay(i - progressFrom)}ms`,
+                            } as CSSProperties)
+                          : undefined
+                      }
+                    />
+                  );
+                },
               )}
             </div>
           </section>
           <section className="pressure-section">
             <div className="section-label">
               <Activity size={14} />
-              INSTABILITY<strong>{view?.instability ?? 0} / 12</strong>
+              INSTABILITY<strong>{instability} / 12</strong>
             </div>
-            <div className="segmented-track danger">
+            {/* One flash, never a loop: a permanent alarm would stop reading
+                as news long before instability actually reaches 12. */}
+            <div
+              key={instabilityPulse}
+              className={`segmented-track danger${escalating ? " motion-flash" : ""}`}
+            >
               {Array.from({ length: 12 }, (_, i) => (
-                <i
-                  key={i}
-                  className={i < (view?.instability ?? 0) ? "filled" : ""}
-                />
+                <i key={i} className={i < instability ? "filled" : ""} />
               ))}
             </div>
             <p>At 12, Greyhaven falls. Six rounds remain at deployment.</p>
-            <div className="world-response">
+            {/* The world answered and re-issued its forecast; the block settles
+                back in so the escalation lands somewhere other than the log. */}
+            <div
+              key={roundPulse}
+              className={`world-response${roundTurned ? " motion-settle" : ""}`}
+            >
               <span>NEXT WORLD RESPONSE</span>
               <strong>
                 +{pressure} instability
@@ -575,7 +649,8 @@ export function App() {
             <div className="comms-feed" aria-live="polite">
               {view?.requests.map((request) => (
                 <button
-                  className="assist-request"
+                  className={`assist-request${arrived(`request:${request.seat}`) ? " motion-settle" : ""}`}
+                  style={arrivalDelay(`request:${request.seat}`)}
                   key={request.seat}
                   onClick={() => {
                     setAlly(request.seat);
@@ -594,7 +669,10 @@ export function App() {
               ))}
               {view?.reports.map((report) => (
                 <div
-                  className="report"
+                  className={`report${arrived(`report:${report.seat}-${report.location}`) ? " motion-settle" : ""}`}
+                  style={arrivalDelay(
+                    `report:${report.seat}-${report.location}`,
+                  )}
                   key={`${report.seat}-${report.location}`}
                 >
                   <span style={{ color: identities[report.seat].color }}>
@@ -617,6 +695,8 @@ export function App() {
           {seats.map((role) => {
             const member = view?.players.find((p) => p.seat === role);
             const id = identities[role];
+            const boost = view?.boosts[role] ?? 0;
+            const supported = boostArrivals.has(`${role}:${boost}`);
             return (
               <button
                 key={role}
@@ -634,15 +714,20 @@ export function App() {
                     {id.family} / {id.engine}
                   </small>
                 </span>
-                <span className="crew-state">
+                {/* Support is something a teammate spent on you; the label is
+                    remounted on the new total so the flash replays. */}
+                <span
+                  key={`${role}:${boost}`}
+                  className={`crew-state${supported ? " motion-flash" : ""}`}
+                >
                   {game.mode === "team" && !game.onlineSeats.includes(role)
                     ? "OFFLINE"
                     : member?.ready
                       ? "FINISHED"
                       : member?.holding
                         ? "HOLDING"
-                        : (view?.boosts[role] ?? 0) > 0
-                          ? `+${view?.boosts[role]} SUPPORT`
+                        : boost > 0
+                          ? `+${boost} SUPPORT`
                           : "AVAILABLE"}
                 </span>
               </button>

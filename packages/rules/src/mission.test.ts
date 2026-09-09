@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { missionMap } from "@rifts/content";
-import { hexDistance, hexKey, parseHex } from "@rifts/shared";
+import { hexDistance, hexKey, parseHex, type Hex } from "@rifts/shared";
 import {
   applyCommand,
   createMission,
@@ -10,6 +10,7 @@ import {
   previewAction,
   diceOutput,
   facetForAction,
+  worldPressure,
   reachable,
   siteAt,
   tableView,
@@ -98,13 +99,41 @@ function armed(
  * journey of several commitments rather than a single move.
  */
 function travel(state: MissionState, seat: Seat, site: MissionLocation) {
+  return march(
+    state,
+    seat,
+    missionMap.sites[site],
+    (hex, size) => siteAt(hex, size) === site,
+    site,
+  );
+}
+
+/** Walks a seat until it is close enough to swing at a placed enemy. */
+function closeWith(state: MissionState, seat: Seat, enemyId: string) {
+  const where = (s: MissionState) =>
+    s.enemies.find((enemy) => enemy.id === enemyId)!.position;
+  return march(
+    state,
+    seat,
+    where(state),
+    (hex, size) => hexDistance(hex, where(state)) <= size + 1,
+    enemyId,
+  );
+}
+
+function march(
+  state: MissionState,
+  seat: Seat,
+  goal: Hex,
+  arrived: (hex: Hex, size: number) => boolean,
+  label: string,
+) {
   let s = state;
   for (let guard = 0; guard < 20; guard++) {
     const player = s.players.find((p) => p.seat === seat)!;
-    if (player.location === site) return s;
+    if (arrived(player.position, player.size)) return s;
     if (seat === "bag" && s.private.bag.engine.pending.length === 0)
       s = push(s, 1);
-    const goal = missionMap.sites[site];
     const allies = s.players.filter((p) => p.seat !== seat);
     /** A legal resting anchor: allies may be passed but not stood on. */
     const free = (hex: { q: number; r: number }) =>
@@ -124,15 +153,14 @@ function travel(state: MissionState, seat: Seat, site: MissionLocation) {
         if (cameFrom.has(key)) continue;
         cameFrom.set(key, hexKey(here));
         const hex = parseHex(key)!;
-        // Use the game's own rule for "at a site" rather than approximating it.
-        if (siteAt(hex, player.size) === site && free(hex)) {
+        if (arrived(hex, player.size) && free(hex)) {
           arrival = key;
           break;
         }
         queue.push(hex);
       }
     }
-    if (!arrival) throw new Error(`${seat} cannot reach ${site}.`);
+    if (!arrival) throw new Error(`${seat} cannot reach ${label}.`);
     const path: string[] = [];
     for (let at: string | null = arrival; at; at = cameFrom.get(at) ?? null)
       path.unshift(at);
@@ -163,7 +191,7 @@ function travel(state: MissionState, seat: Seat, site: MissionLocation) {
         if (!best || distance < best.distance) best = { key, distance };
       }
       if (!best || best.distance >= hexDistance(player.position, goal))
-        throw new Error(`${seat} is boxed in short of ${site}.`);
+        throw new Error(`${seat} is boxed in short of ${label}.`);
       step = best.key;
     }
     ready = armed(s, seat, "move");
@@ -174,7 +202,7 @@ function travel(state: MissionState, seat: Seat, site: MissionLocation) {
       pieces: ready.pieces,
     });
   }
-  throw new Error(`${seat} never reached ${site}.`);
+  throw new Error(`${seat} never reached ${label}.`);
 }
 function round(state: MissionState): MissionState {
   for (const seat of missionSeats) state = act(state, seat, { type: "ready" });
@@ -322,19 +350,20 @@ describe("Greyhaven mission", () => {
   it("lets another engine exploit a shared weakness once, paying normal capability", () => {
     let s = createMission();
     s = act(s, "dice", { type: "share", target: "gate" });
-    s = travel(s, "systems", "gate");
+    const quarry = s.enemies[0]!.id;
+    s = closeWith(s, "systems", quarry);
     const command: MissionCommand = {
       type: "act",
       action: "engage",
-      target: "gate",
+      target: quarry,
       pieces: [piece(s, "systems")],
     };
     expect(previewAction(playerView(s, "systems"), command).effect).toContain(
-      "Remove 1",
+      "for 1",
     );
     s = act(s, "bag", { type: "share", target: "gate" });
     expect(previewAction(playerView(s, "systems"), command).effect).toContain(
-      "Remove 2",
+      "for 2",
     );
     s = act(s, "systems", command);
     expect(s.threat).toBe(1);
@@ -368,6 +397,40 @@ describe("Greyhaven mission", () => {
     s = action(s, "cards", "investigate", "archive");
     expect(s.resources.power).toBe(4);
   });
+  it("brings the opposition to you at the world response", () => {
+    let s = createMission();
+    const patrol = () => s.enemies.find((e) => e.id === "patrol-flank")!;
+    const hunted = s.players.find((p) => p.seat === "cards")!;
+    const before = hexDistance(patrol().position, hunted.position);
+
+    // Nothing moves while the team is acting: the round belongs to the players.
+    s = travel(s, "cards", "gate");
+    expect(hexDistance(patrol().position, s.players[1]!.position)).toBe(
+      hexDistance(patrol().position, s.players[1]!.position),
+    );
+
+    // The answer comes when the world responds, and only then.
+    const after = round(s);
+    const closed = hexDistance(
+      after.enemies.find((e) => e.id === "patrol-flank")!.position,
+      after.players.find((p) => p.seat === "cards")!.position,
+    );
+    expect(closed).toBeLessThan(before);
+    expect(after.log.some((entry) => entry.text.includes("advances on"))).toBe(
+      true,
+    );
+
+    // Standing next to one costs the team every round it is left alive.
+    let s2 = createMission();
+    s2 = closeWith(s2, "cards", "patrol-flank");
+    const hurt = round(s2);
+    expect(
+      hurt.log.some((entry) => entry.text.includes("+1 instability")),
+    ).toBe(true);
+    expect(hurt.instability).toBeGreaterThan(
+      worldPressure(s2.round, s2.threat),
+    );
+  });
   it("makes the platform choose between moving, shooting and holding still", () => {
     let s = createMission();
     const tray = () => s.private.dice.engine.dice;
@@ -394,30 +457,33 @@ describe("Greyhaven mission", () => {
     // same tray the guns are drawn from.
     put("mobility");
     put("mobility");
-    s = travel(s, "dice", "gate");
-    expect(s.players.find((p) => p.seat === "dice")?.location).toBe("gate");
+    const quarry = s.enemies[0]!.id;
+    s = closeWith(s, "dice", quarry);
 
     // The Boom Gun is inert until something braces it.
     const aim = put("targeting");
     const gun = put("boom");
     const unbraced = [aim.id, gun.id];
-    expect(preview("engage", "gate", unbraced).reason).toContain("unbraced");
+    expect(preview("engage", quarry, unbraced).reason).toContain("unbraced");
 
     const brace = put("bracing");
     const system = [aim.id, gun.id, brace.id];
     // Bracing buys no output of its own; the Boom Gun doubles what it holds.
-    expect(preview("engage", "gate", system).effect).toContain(
-      `Remove ${Math.min(s.threat, diceOutput([aim]) + diceOutput([gun]) * 2)}`,
+    expect(preview("engage", quarry, system).effect).toContain(
+      `for ${Math.min(
+        s.enemies.find((enemy) => enemy.id === quarry)!.strength,
+        diceOutput([aim]) + diceOutput([gun]) * 2,
+      )}`,
     );
     // Part of a system cannot be held back.
-    expect(preview("engage", "gate", unbraced).reason).toContain(
+    expect(preview("engage", quarry, unbraced).reason).toContain(
       "Commit everything",
     );
 
     s = act(s, "dice", {
       type: "act",
       action: "engage",
-      target: "gate",
+      target: quarry,
       pieces: system,
     });
     // One shot consumed the whole system, bracing included.

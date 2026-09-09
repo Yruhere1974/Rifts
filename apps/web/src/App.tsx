@@ -118,6 +118,7 @@ export function App() {
   const [pieces, setPieces] = useState<string[]>([]);
   const [action, setAction] = useState<Action>("contribute");
   const [ally, setAlly] = useState<Seat>("systems");
+  const [foe, setFoe] = useState("");
   const [resource, setResource] = useState("power");
   const [lobbyMode, setLobbyMode] = useState<"practice" | "team">(
     link ? "team" : "practice",
@@ -229,19 +230,26 @@ export function App() {
             )
             .map((die) => die.id)
         : pieces;
+  const inReach = (view?.enemies ?? []).filter(
+    (enemy) =>
+      player && hexDistance(player.position, enemy.position) <= player.size + 1,
+  );
+  const quarry = inReach.find((enemy) => enemy.id === foe) ?? inReach[0];
   const command: MissionCommand = {
     type: "act",
     action,
     target:
-      action === "assist"
-        ? recipient
-        : action === "acquire"
-          ? resource
-          : action === "recover"
-            ? seat
-            : action === "move"
-              ? selected
-              : (selectedSite ?? ""),
+      action === "engage"
+        ? (quarry?.id ?? "")
+        : action === "assist"
+          ? recipient
+          : action === "acquire"
+            ? resource
+            : action === "recover"
+              ? seat
+              : action === "move"
+                ? selected
+                : (selectedSite ?? ""),
     pieces: committed,
   };
   const preview = view ? previewAction(view, command) : null;
@@ -903,7 +911,23 @@ export function App() {
                 </div>
                 <div className="target-line">
                   <span>TARGET</span>
-                  {action === "assist" ? (
+                  {action === "engage" ? (
+                    inReach.length ? (
+                      <select
+                        aria-label="Enemy to engage"
+                        value={quarry?.id ?? ""}
+                        onChange={(event) => setFoe(event.target.value)}
+                      >
+                        {inReach.map((enemy) => (
+                          <option key={enemy.id} value={enemy.id}>
+                            {enemy.name} ({enemy.strength})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <strong>Nothing in reach</strong>
+                    )
+                  ) : action === "assist" ? (
                     <select
                       aria-label="Assistance recipient"
                       value={recipient}

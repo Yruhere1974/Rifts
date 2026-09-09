@@ -49,6 +49,29 @@ export const siteHexes = {
 } as const;
 
 /**
+ * The opposition, placed rather than abstract. Behaviour is deliberately
+ * readable: a patrol that can reach someone hurts them, and otherwise walks
+ * toward the nearest specialist. Players should be able to reason about it the
+ * way they reason about a board game, not guess at it.
+ */
+export const enemyPlacements = [
+  {
+    id: "patrol-lead",
+    name: "Armoured leader",
+    hex: { q: -15, r: 9 },
+    strength: 2,
+    speed: 3,
+  },
+  {
+    id: "patrol-flank",
+    name: "Outrider",
+    hex: { q: -18, r: 12 },
+    strength: 1,
+    speed: 5,
+  },
+] as const;
+
+/**
  * The things on the map you actually act on. An objective is no longer a room
  * you stand in: it is a piece of apparatus you have to be beside. Several per
  * site means a team spreads out across a chamber instead of stacking on one
@@ -132,6 +155,18 @@ export const missionMapSchema = z
       archive: hexSchema,
       rift: hexSchema,
     }),
+    /** Placed opposition. Strength is how much Engage output removes it. */
+    enemies: z
+      .array(
+        z.strictObject({
+          id: z.string().min(1),
+          name: z.string().min(1),
+          hex: hexSchema,
+          strength: z.number().int().positive(),
+          speed: z.number().int().positive(),
+        }),
+      )
+      .min(1),
     /** Apparatus you must be adjacent to in order to act on it. */
     objects: z
       .array(
@@ -216,6 +251,13 @@ export const missionMapSchema = z
         );
       }),
     );
+    for (const enemy of map.enemies)
+      if (!open.has(hexKey(enemy.hex)))
+        context.addIssue({
+          code: "custom",
+          path: ["enemies", enemy.id],
+          message: `${enemy.id} is not on an open hex.`,
+        });
     for (const object of map.objects) {
       if (!open.has(hexKey(object.hex))) {
         context.addIssue({
@@ -280,6 +322,7 @@ export const missionMap: MissionMapDefinition = missionMapSchema.parse({
   open: buildOpenHexes(),
   sites: siteHexes,
   objects: siteObjects,
+  enemies: enemyPlacements,
   deploy: {
     dice: { q: 3, r: -1 },
     cards: { q: -3, r: 1 },

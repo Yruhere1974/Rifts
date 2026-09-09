@@ -77,6 +77,14 @@ Adding a web dependency or changing `vite.config.ts` also needs the web dev serv
 
 ## In Flight
 
+- Enemies are placed units, on `feature/hex-board`. `threat` was an abstract number at the gate; it is now two patrol units with positions, strength and speed, and `threat` survives only as a derived total so existing displays keep working. Engage names a specific enemy and requires being within reach of it, so the Boom Gun finally has something to be aimed at rather than a scalar to decrement.
+
+- Behaviour is deliberately readable, per the concept document's requirement that the opposition be reasoned about like a board game rather than guessed at. Enemies act once, at the world response: a patrol that can reach a specialist costs the team 1 instability, and otherwise walks toward the nearest one, as far as its speed allows and only over open floor. That honours the earlier decision to keep player actions simultaneous while giving the threat a slot players can plan around.
+
+- Not yet done, and worth deciding before more enemy work: enemies do not block movement, have no facing, and cannot be blocked or screened. A specialist can walk straight past one. Bracing and Targeting are meaningful now, but Defence and Shield still only interact with instability rather than with anything a patrol does.
+
+- Next: the tech tree proper, with data in `packages/content` and state in the mission so a campaign can persist it later. The advancement panel already occupies the surface it will fill.
+
 - Bigger map and true adjacency, on `feature/hex-board`. The undercroft went from about 210 open hexes to 476: four objective chambers, three junctions that carry no objective so the halls bend and there is somewhere to be caught in the open, and sites pushed to 14-22 hexes apart. `hexesPerEffect` is 14, which keeps a leg at one strong commitment or two weak ones; at 10 the mission became unwinnable, which the goal-seeking driver caught.
 
 - An objective is no longer a room you stand in. `packages/content/src/map.ts` places apparatus — conduits, anchors, a barricade, a hatch — and `siteAt` now resolves by what a unit is beside rather than by a radius around a site hex. Several pieces per site means a team spreads across a chamber instead of stacking on one hex. Zod validates that every object sits on open floor, that something can stand beside it, that every site has at least one, and that the deployment anchors are each beside a relay conduit.

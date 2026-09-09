@@ -110,6 +110,14 @@ export type MissionEngine = {
   /** Occupied modules; "primed" indicates enhanced next placement. */
   slots: string[];
 };
+/** A placed enemy. Everyone can see it: it is standing on the board. */
+export type MissionEnemy = {
+  id: string;
+  name: string;
+  position: Hex;
+  strength: number;
+  speed: number;
+};
 export type MissionPublicState = {
   round: number;
   phase: "action" | "won" | "lost";
@@ -119,7 +127,9 @@ export type MissionPublicState = {
   requiredProgress: number;
   shield: boolean;
   frequencyKnown: boolean;
+  /** Total strength still standing. Derived from `enemies`, kept for displays. */
   threat: number;
+  enemies: MissionEnemy[];
   boosts: Record<Seat, number>;
   log: { id: number; text: string }[];
   players: MissionPlayer[];
@@ -521,7 +531,14 @@ export function createMission(seed = 1): MissionState {
     requiredProgress: playableMission.requiredProgress,
     shield: true,
     frequencyKnown: false,
-    threat: 3,
+    threat: missionMap.enemies.reduce((sum, e) => sum + e.strength, 0),
+    enemies: missionMap.enemies.map((enemy) => ({
+      id: enemy.id,
+      name: enemy.name,
+      position: { ...enemy.hex },
+      strength: enemy.strength,
+      speed: enemy.speed,
+    })),
     boosts: { dice: 0, cards: 0, bag: 0, systems: 0 },
     log: [
       {
@@ -566,6 +583,7 @@ export function tableView(state: MissionState): MissionTableView {
     shield: state.shield,
     frequencyKnown: state.frequencyKnown,
     threat: state.threat,
+    enemies: state.enemies,
     boosts: state.boosts,
     log: state.log,
     players: state.players,
@@ -602,6 +620,7 @@ export function playerView(state: MissionState, seat: Seat): MissionView {
     shield: state.shield,
     frequencyKnown: state.frequencyKnown,
     threat: state.threat,
+    enemies: state.enemies,
     boosts: state.boosts,
     log: state.log,
     players: state.players,
@@ -772,9 +791,13 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     if (target !== view.seat && target !== player.location)
       return deny("Recover targets yourself or your current location.");
   } else {
-    if (target !== player.location) return deny("Move to the target first.");
-    if (action === "engage" && (target !== "gate" || view.threat === 0))
-      return deny("No gate patrol to engage here.");
+    if (action === "engage") {
+      const quarry = view.enemies.find((enemy) => enemy.id === target);
+      if (!quarry) return deny("Choose something to engage.");
+      if (hexDistance(player.position, quarry.position) > player.size + 1)
+        return deny(`Too far from ${quarry.name}. Close with it first.`);
+    } else if (target !== player.location)
+      return deny("Move to the target first.");
     if (action === "investigate" && target !== "archive" && target !== "rift")
       return deny("Investigate the archive or rift.");
     if (action === "contribute" && target !== "relay" && target !== "rift")
@@ -959,9 +982,14 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       }${!site && goal ? `, heading for ${locationNames[goal]}` : ""}.`;
       break;
     }
-    case "engage":
-      effect = `Remove ${Math.min(view.threat, amount)} gate threat.${discovery === "flank" ? " Includes +1 from the shared patrol weakness; this opening is spent." : ""}`;
+    case "engage": {
+      const quarry = view.enemies.find((enemy) => enemy.id === target);
+      const dealt = Math.min(quarry?.strength ?? 0, amount);
+      effect = `Hit ${quarry?.name ?? "the enemy"} for ${dealt}${
+        dealt >= (quarry?.strength ?? 0) ? ", destroying it" : ""
+      }.${discovery === "flank" ? " Includes +1 from the shared patrol weakness; this opening is spent." : ""}`;
       break;
+    }
     case "assist":
       effect = `Give ${target} +${amount} on their next effect action. Your committed capability is spent.`;
       break;
@@ -1031,9 +1059,18 @@ function reduceWorld(
       }
       break;
     }
-    case "engage":
-      state.threat = Math.max(0, state.threat - event.amount);
+    case "engage": {
+      const quarry = state.enemies.find((enemy) => enemy.id === event.target);
+      if (quarry) {
+        quarry.strength = Math.max(0, quarry.strength - event.amount);
+        state.enemies = state.enemies.filter((enemy) => enemy.strength > 0);
+      }
+      state.threat = state.enemies.reduce(
+        (sum, enemy) => sum + enemy.strength,
+        0,
+      );
       break;
+    }
     case "assist":
       state.boosts[event.target as Seat] += event.amount;
       state.requests = state.requests.filter((r) => r.seat !== event.target);
@@ -1066,6 +1103,52 @@ function reduceWorld(
       break;
   }
 }
+/**
+ * The opposition acts once, at the world response, so players act freely and
+ * simultaneously all round and still know exactly when the answer comes. A
+ * patrol that can reach someone hurts them; otherwise it walks toward the
+ * nearest specialist, as far as its speed allows and only over open floor.
+ */
+function activateEnemies(state: MissionState): void {
+  for (const enemy of state.enemies) {
+    const targets = state.players;
+    if (!targets.length) continue;
+    const reach = (player: MissionPlayer) =>
+      hexDistance(enemy.position, player.position) - player.size;
+    const nearest = targets.reduce((closest, player) =>
+      reach(player) < reach(closest) ? player : closest,
+    );
+    if (reach(nearest) <= 1) {
+      state.instability += 1;
+      append(state, `${enemy.name} is on ${nearest.name}: +1 instability.`);
+      continue;
+    }
+    // Walk in, one hex at a time, over floor it can actually cross.
+    let at = enemy.position;
+    for (let step = 0; step < enemy.speed; step++) {
+      const options = hexesWithin(at, 1)
+        .filter((cell) => footprintClear(cell, 0))
+        .filter((cell) => hexKey(cell) !== hexKey(at));
+      if (!options.length) break;
+      const best = options.reduce((closest, cell) =>
+        hexDistance(cell, nearest.position) <
+        hexDistance(closest, nearest.position)
+          ? cell
+          : closest,
+      );
+      if (
+        hexDistance(best, nearest.position) >= hexDistance(at, nearest.position)
+      )
+        break;
+      at = best;
+    }
+    if (hexKey(at) !== hexKey(enemy.position)) {
+      enemy.position = at;
+      append(state, `${enemy.name} advances on ${nearest.name}.`);
+    }
+  }
+}
+
 function settle(state: MissionState): void {
   // A catastrophic blind final contribution loses even if it reaches the goal.
   if (state.instability >= playableMission.instabilityLimit)
@@ -1166,6 +1249,7 @@ export function applyCommand(
         player.holding = false;
         append(next, `${player.name} is ready.`);
         if (next.players.every((entry) => entry.ready)) {
+          activateEnemies(next);
           const pressure = worldPressure(next.round, next.threat);
           next.instability += pressure;
           append(

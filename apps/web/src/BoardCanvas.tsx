@@ -19,7 +19,7 @@ import { MOTION } from "./motion.js";
  */
 export type BoardView = Pick<
   MissionPublicState,
-  "phase" | "shield" | "threat" | "players"
+  "phase" | "shield" | "threat" | "players" | "enemies"
 > & { seat?: Seat };
 
 const colors: Record<Seat, number> = {
@@ -463,6 +463,19 @@ export function BoardCanvas({
               dynamic
                 .poly(hexCorners(anchor, HEX * (player.size + 1) * 0.95))
                 .stroke({ color: 0xf2ead0, width: 2 });
+          }
+
+          // The opposition, drawn where it is standing rather than counted.
+          for (const enemy of state.view?.enemies ?? []) {
+            const at = hexToPixel(enemy.position, HEX);
+            dynamic
+              .poly(hexCorners(at, HEX * 0.9))
+              .fill({ color: 0xb1745e, alpha: 0.85 })
+              .stroke({ color: 0xe4a680, width: 2 });
+            for (let pip = 0; pip < enemy.strength; pip++)
+              dynamic
+                .circle(at.x - 4 + pip * 4, at.y + HEX * 0.55, 1.6)
+                .fill(0xe4a680);
           }
 
           const chosen = parseHex(state.selected);

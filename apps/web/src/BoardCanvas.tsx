@@ -1,15 +1,17 @@
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics } from "pixi.js";
-import type { MissionPublicState, Seat } from "@rifts/rules";
+import type { MissionPlayer, MissionPublicState, Seat } from "@rifts/rules";
 import { missionMap } from "@rifts/content";
 import {
   footprint,
+  hexDistance,
   hexKey,
   hexToPixel,
   hexesWithin,
   parseHex,
   type Hex,
 } from "@rifts/shared";
+import { MOTION } from "./motion.js";
 
 /**
  * Exactly the fields the board draws. Both a seat view and the public table
@@ -34,6 +36,7 @@ const siteColors: Record<string, number> = {
 };
 
 const HEX = 12;
+const openKeys = new Set(missionMap.open);
 const openHexes = missionMap.open
   .map((key) => parseHex(key))
   .filter((hex): hex is Hex => hex !== null);
@@ -44,6 +47,185 @@ const siteAreas = Object.entries(missionMap.sites).map(([name, hex]) => ({
     hexesWithin(hex, missionMap.siteRadius).map((cell) => hexKey(cell)),
   ),
 }));
+
+/**
+ * Anchors a unit of a given size may stand on: its whole footprint has to be
+ * open floor, which is why a large unit has fewer roads open to it than a
+ * small one. Computed once per size, on first use.
+ */
+const standings = new Map<number, ReadonlySet<string>>();
+function standing(size: number): ReadonlySet<string> {
+  const known = standings.get(size);
+  if (known) return known;
+  const cells = new Set(
+    openHexes
+      .filter((hex) =>
+        footprint(hex, size).every((cell) => openKeys.has(hexKey(cell))),
+      )
+      .map((hex) => hexKey(hex)),
+  );
+  standings.set(size, cells);
+  return cells;
+}
+
+/**
+ * Footprint cell centres relative to the anchor. `hexToPixel` is linear in q
+ * and r, so offsetting one animated anchor point carries the whole unit, and
+ * the footprint can never drift away from its own dot.
+ */
+const offsets = new Map<number, { x: number; y: number }[]>();
+function footprintOffsets(size: number): { x: number; y: number }[] {
+  const known = offsets.get(size);
+  if (known) return known;
+  const cells = footprint({ q: 0, r: 0 }, size).map((cell) =>
+    hexToPixel(cell, HEX),
+  );
+  offsets.set(size, cells);
+  return cells;
+}
+
+/**
+ * The hexes a unit of this size walks through to get from `from` to `to`.
+ * Breadth-first over standable anchors, so the unit rounds the rock instead of
+ * sliding through it. The server has already chosen the destination; this only
+ * recovers the road it must have taken. Null when there is no legal road.
+ */
+function road(from: Hex, to: Hex, size: number): Hex[] | null {
+  const goal = hexKey(to);
+  const allowed = standing(size);
+  const previous = new Map<string, Hex | null>([[hexKey(from), null]]);
+  let frontier = [from];
+  while (frontier.length && !previous.has(goal)) {
+    const next: Hex[] = [];
+    for (const here of frontier)
+      for (const step of hexesWithin(here, 1)) {
+        const key = hexKey(step);
+        if (previous.has(key) || !allowed.has(key)) continue;
+        previous.set(key, here);
+        next.push(step);
+      }
+    frontier = next;
+  }
+  if (!previous.has(goal)) return null;
+  const path: Hex[] = [];
+  for (
+    let hex: Hex | null | undefined = to;
+    hex;
+    hex = previous.get(hexKey(hex))
+  )
+    path.unshift(hex);
+  return path;
+}
+
+/**
+ * The JS twin of --ease-settle in game.css, so a unit crossing the board
+ * carries the same weight as a card settling into a console: it leaves with a
+ * little inertia, comes to rest calmly, and never overshoots.
+ */
+function easeSettle(progress: number): number {
+  if (progress <= 0) return 0;
+  if (progress >= 1) return 1;
+  // cubic-bezier(0.2, 0.9, 0.25, 1): solve x(u) = progress, then read y(u).
+  const axis = (first: number, second: number, u: number) =>
+    3 * first * u * (1 - u) ** 2 + 3 * second * u ** 2 * (1 - u) + u ** 3;
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 14; step++) {
+    const mid = (low + high) / 2;
+    if (axis(0.2, 0.25, mid) < progress) low = mid;
+    else high = mid;
+  }
+  return axis(0.9, 1, (low + high) / 2);
+}
+
+/**
+ * How long a route of this many hexes takes. The first hex costs a full
+ * MOTION.travel; every hex after it costs far less, because a unit already
+ * under way keeps its speed, and the total is capped so that crossing the
+ * whole map stays a beat rather than a wait.
+ */
+const travelTime = (hexes: number): number =>
+  Math.min(
+    MOTION.travel * Math.min(hexes, 1) +
+      Math.max(hexes - 1, 0) * MOTION.instant,
+    MOTION.travel + MOTION.settle,
+  );
+
+/**
+ * A unit under way. Waypoints are whole hexes, except possibly the first: a
+ * retarget mid-flight leaves that one part-way along a leg, so the unit picks
+ * up from exactly where it had got to rather than jumping to a hex centre.
+ */
+type Journey = {
+  path: Hex[];
+  /** Hexes covered by the time each waypoint is reached; as long as `path`. */
+  marks: number[];
+  total: number;
+  destination: Hex;
+  /** Destination key, so a position arriving from the server diffs cheaply. */
+  target: string;
+  startedAt: number;
+  duration: number;
+};
+
+function begin(
+  path: Hex[],
+  destination: Hex,
+  now: number,
+  reduced: boolean,
+): Journey {
+  const marks: number[] = [];
+  let total = 0;
+  let previous: Hex | null = null;
+  for (const hex of path) {
+    if (previous) total += hexDistance(previous, hex);
+    marks.push(total);
+    previous = hex;
+  }
+  return {
+    path,
+    marks,
+    total,
+    destination,
+    target: hexKey(destination),
+    startedAt: now,
+    duration: reduced ? 0 : travelTime(total),
+  };
+}
+
+/**
+ * Where a unit is right now, and the whole hex it is walking into. Sampling by
+ * distance covered rather than by waypoint index keeps a part-leg from
+ * stretching out to fill a whole leg's worth of time.
+ */
+function sample(journey: Journey, now: number): { at: Hex; into: Hex } {
+  if (journey.total <= 0)
+    return { at: journey.destination, into: journey.destination };
+  const elapsed =
+    journey.duration <= 0 ? 1 : (now - journey.startedAt) / journey.duration;
+  const covered = easeSettle(elapsed) * journey.total;
+  let leg = 0;
+  while (
+    leg + 2 < journey.path.length &&
+    (journey.marks[leg + 1] ?? 0) <= covered
+  )
+    leg++;
+  const from = journey.path[leg];
+  const into = journey.path[leg + 1];
+  if (!from || !into)
+    return { at: journey.destination, into: journey.destination };
+  const start = journey.marks[leg] ?? 0;
+  const span = (journey.marks[leg + 1] ?? 0) - start;
+  const along =
+    span <= 0 ? 1 : Math.min(1, Math.max(0, (covered - start) / span));
+  return {
+    at: {
+      q: from.q + (into.q - from.q) * along,
+      r: from.r + (into.r - from.r) * along,
+    },
+    into,
+  };
+}
 
 function hexCorners(centre: { x: number; y: number }, radius: number) {
   const points: number[] = [];
@@ -156,6 +338,31 @@ export function BoardCanvas({
         let drawnSelected = "";
         let drawnReach: ReadonlySet<string> | undefined;
         let drawnWidth = 0;
+        let drawnTravel = false;
+
+        const journeys = new Map<Seat, Journey>();
+        /**
+         * Keep a unit's journey aimed wherever the server last put it. Rounds
+         * are simultaneous, so a position landing mid-flight retargets from the
+         * hex the unit is already walking into, rather than queueing behind the
+         * road it was on or snapping back to a hex centre.
+         */
+        const travel = (player: MissionPlayer, now: number): Journey => {
+          const current = journeys.get(player.seat);
+          if (current?.target === hexKey(player.position)) return current;
+          // First sight of a unit is not a journey: it is simply there. Under a
+          // reduced-motion preference no move is one either.
+          let path = [player.position];
+          if (current && !reducedMotion) {
+            const { at, into } = sample(current, now);
+            const found = road(into, player.position, player.size);
+            const rest = found ?? [into, player.position];
+            path = hexDistance(at, into) < 1e-6 ? rest : [at, ...rest];
+          }
+          const journey = begin(path, player.position, now, reducedMotion);
+          journeys.set(player.seat, journey);
+          return journey;
+        };
 
         app.ticker.add(() => {
           if (drawnWidth !== app.screen.width) {
@@ -163,12 +370,26 @@ export function BoardCanvas({
             fit();
           }
           const state = latest.current;
+          const now = performance.now();
+          // Journeys are retargeted ahead of the redraw guard, because a new
+          // position can land on any frame. A unit under way keeps the board
+          // redrawing, plus one frame past the end so it lands exactly.
+          const anchors = new Map<Seat, Hex>();
+          let travelling = false;
+          for (const player of state.view?.players ?? []) {
+            const journey = travel(player, now);
+            anchors.set(player.seat, sample(journey, now).at);
+            if (now < journey.startedAt + journey.duration) travelling = true;
+          }
           if (
+            !travelling &&
+            !drawnTravel &&
             drawnView === state.view &&
             drawnSelected === state.selected &&
             drawnReach === state.reachable
           )
             return;
+          drawnTravel = travelling;
           drawnView = state.view;
           drawnSelected = state.selected;
           drawnReach = state.reachable;
@@ -186,11 +407,19 @@ export function BoardCanvas({
           // Units are drawn as the hexes they actually occupy.
           for (const player of state.view?.players ?? []) {
             const colour = colors[player.seat];
-            for (const cell of footprint(player.position, player.size))
+            const anchor = hexToPixel(
+              anchors.get(player.seat) ?? player.position,
+              HEX,
+            );
+            for (const offset of footprintOffsets(player.size))
               dynamic
-                .poly(hexCorners(hexToPixel(cell, HEX), HEX * 0.86))
+                .poly(
+                  hexCorners(
+                    { x: anchor.x + offset.x, y: anchor.y + offset.y },
+                    HEX * 0.86,
+                  ),
+                )
                 .fill({ color: colour, alpha: 0.34 });
-            const anchor = hexToPixel(player.position, HEX);
             dynamic
               .circle(anchor.x, anchor.y, HEX * 0.55)
               .fill(colour)

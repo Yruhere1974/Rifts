@@ -11,50 +11,45 @@ import {
 } from "lucide-react";
 import type { DragEvent } from "react";
 import type { MissionView, MissionAction, Seat } from "@rifts/rules";
+import { specialists } from "@rifts/content";
 
-export const identities = {
-  soldier: {
-    title: "Vanguard",
-    engine: "Dice allocation",
-    icon: Dices,
-    color: "#e5b65c",
-    upgrade:
-      "Gain a sixth die immediately and each round. More allocation choices for the rest of the mission.",
-  },
-  mage: {
-    title: "Wayfinder",
-    engine: "Card weaving",
-    icon: Layers,
-    color: "#b09be3",
-    upgrade:
-      "Channel + Resonance gains another +1 effect for the rest of the mission.",
-  },
-  scout: {
-    title: "Pathfinder",
-    engine: "Push your luck",
-    icon: Compass,
-    color: "#73c4a1",
-    upgrade:
-      "Replace one hazard with a double-output jackpot in this bag and each future bag.",
-  },
-  operator: {
-    title: "Operator",
-    engine: "Systems placement",
-    icon: CircuitBoard,
-    color: "#6ab7d8",
-    upgrade:
-      "Gain a fifth placement marker immediately and each round. Occupied modules still limit placements.",
-  },
-} satisfies Record<
+/**
+ * A view of the authored specialists. Class names, colours and upgrade text
+ * come from content; this module only supplies the icon per engine family.
+ */
+const icons = {
+  dice: Dices,
+  cards: Layers,
+  bag: Compass,
+  systems: CircuitBoard,
+} satisfies Record<Seat, typeof Dices>;
+
+export const identities = Object.fromEntries(
+  specialists.map((entry) => [
+    entry.family,
+    {
+      title: entry.className,
+      family: entry.familyName,
+      engine: entry.engine,
+      icon: icons[entry.family],
+      color: entry.colour,
+      flavour: entry.flavour,
+      upgrade: entry.upgrade,
+    },
+  ]),
+) as Record<
   Seat,
   {
     title: string;
+    family: string;
     engine: string;
     icon: typeof Dices;
     color: string;
+    flavour: string;
     upgrade: string;
   }
 >;
+
 const pipPositions: Record<number, number[]> = {
   1: [4],
   2: [0, 8],
@@ -100,7 +95,7 @@ export function EngineConsole({
     "aria-pressed": selected.includes(id),
     disabled,
   });
-  if (view.seat === "soldier")
+  if (view.seat === "dice")
     return (
       <div className="dice-engine">
         <div className="dice-tray">
@@ -141,7 +136,7 @@ export function EngineConsole({
         </div>
       </div>
     );
-  if (view.seat === "mage")
+  if (view.seat === "cards")
     return (
       <div className="card-hand">
         {engine.hand.map((card) => (
@@ -165,7 +160,7 @@ export function EngineConsole({
         )}
       </div>
     );
-  if (view.seat === "scout")
+  if (view.seat === "bag")
     return (
       <div className="bag-engine">
         <button

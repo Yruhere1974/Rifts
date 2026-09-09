@@ -50,7 +50,7 @@ async function connect(seat: Seat, roomId?: string, clientKey = randomUUID()) {
 test("authoritative rooms redact secrets, bind seats, and serialize shared costs", async () => {
   const clients: Awaited<ReturnType<typeof connect>>[] = [];
   try {
-    clients.push(await connect("soldier"));
+    clients.push(await connect("dice"));
     const first = clients[0]!;
     const roomId = first.room.roomId;
     first.send({ type: "donate" });
@@ -99,26 +99,26 @@ test("authoritative rooms redact secrets, bind seats, and serialize shared costs
         operator.latest.view.engine.markers.length,
     ).toBe(8);
     const before = first.errors.length;
-    first.room.send("seat", { token: first.latest.token, seat: "mage" });
+    first.room.send("seat", { token: first.latest.token, seat: "cards" });
     await expect.poll(() => first.errors.length).toBe(before + 1);
     first.room.send("command", {
       token: first.latest.token,
-      command: { type: "donate", actorId: "mage" },
+      command: { type: "donate", actorId: "cards" },
     });
     await expect.poll(() => first.errors.length).toBe(before + 2);
-    expect(first.latest.view.seat).toBe("soldier");
+    expect(first.latest.view.seat).toBe("dice");
     const originalHand = clients[1]!.latest.view.engine.hand;
     const mageKey = clients[1]!.clientKey;
     await clients[1]!.room.leave();
     await expect.poll(() => first.latest.onlineSeats.length).toBe(3);
     expect(
-      first.latest.view.players.find((p) => p.seat === "mage")?.ready,
+      first.latest.view.players.find((p) => p.seat === "cards")?.ready,
     ).toBe(true);
-    await expect(connect("mage", roomId)).rejects.toThrow("reserved");
-    const rejoined = await connect("mage", roomId, mageKey);
+    await expect(connect("cards", roomId)).rejects.toThrow("reserved");
+    const rejoined = await connect("cards", roomId, mageKey);
     clients.push(rejoined);
     expect(rejoined.latest.view.engine.hand).toEqual(originalHand);
-    expect(rejoined.latest.view.seat).toBe("mage");
+    expect(rejoined.latest.view.seat).toBe("cards");
   } finally {
     await Promise.all(
       clients
@@ -172,7 +172,7 @@ test("four independent browser seats see one world and different private engines
     await expect(pages[0]!.locator(".comms-feed")).toContainText(mageReading);
     await pages[3]!.getByRole("button", { name: "Request help" }).click();
     await expect(pages[0]!.locator(".assist-request")).toContainText(
-      "Operator needs support",
+      "Techno-Wizard needs support",
     );
     await pages[1]!
       .getByRole("button", { name: "Resonance card", exact: true })
@@ -181,7 +181,7 @@ test("four independent browser seats see one world and different private engines
     await pages[1]!
       .getByRole("button", { name: "Assist", exact: true })
       .click();
-    await pages[1]!.getByLabel("Assistance recipient").selectOption("operator");
+    await pages[1]!.getByLabel("Assistance recipient").selectOption("systems");
     await pages[1]!
       .getByRole("button", { name: "Commit assist", exact: true })
       .click();
@@ -278,7 +278,7 @@ test("four independent browser seats see one world and different private engines
     await commit(mage, "Contribute");
     await operator.locator(".placement-marker").first().click();
     await operator.getByRole("button", { name: "Assist", exact: true }).click();
-    await operator.getByLabel("Assistance recipient").selectOption("soldier");
+    await operator.getByLabel("Assistance recipient").selectOption("dice");
     await commit(operator, "Assist");
     await vanguard
       .getByRole("button", { name: "The breach", exact: true })
@@ -340,7 +340,7 @@ test("four tabs in one browser hold four seats, and the table screen stays publi
     // Every tab holds its own seat, so all four are online and the round starts.
     for (let i = 0; i < 4; i++) {
       await expect(tabs[i]!.locator(".engine-heading .eyebrow")).toContainText(
-        ["Vanguard", "Wayfinder", "Pathfinder", "Operator"][i]!,
+        ["Glitter Boy", "Ley Line Walker", "Juicer", "Techno-Wizard"][i]!,
       );
     }
     await expect(tabs[0]!.locator(".presence-notice")).toHaveCount(0);

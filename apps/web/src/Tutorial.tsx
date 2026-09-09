@@ -23,17 +23,17 @@ const lessons: Lesson[] = [
   {
     title: "One crisis, four perspectives",
     instruction:
-      "Start as Vanguard. Read Your perception below your kit, then Share reading with team.",
+      "Start as Glitter Boy. Read Your perception below your kit, then Share reading with team.",
     consequence:
       "Your reading becomes public, but one report alone cannot establish safe timing. The shared breach needs 24 stabilization before instability reaches 12.",
     target: ".private-section",
     complete: (v) =>
-      v.reports.some((r) => r.seat === "soldier" && r.location === "rift"),
+      v.reports.some((r) => r.seat === "dice" && r.location === "rift"),
   },
   {
     title: "Commit a die to the relay",
     instruction:
-      "As Vanguard, select The relay on the map. Select a low die, choose Contribute, read the preview, then Commit contribute.",
+      "As Glitter Boy, select The relay on the map. Select a low die, choose Contribute, read the preview, then Commit contribute.",
     consequence:
       "The die and 2 shared Power are spent. The relay adds 1 instability now, but doubles every later breach contribution. Keep your high dice for stronger effects.",
     target: ".engine-section",
@@ -52,62 +52,62 @@ const lessons: Lesson[] = [
   {
     title: "Corroborate the reading",
     instruction:
-      "Switch to Wayfinder in the crew strip. Read their different perception and Share reading with team.",
+      "Switch to Ley Line Walker in the crew strip. Read their different perception and Share reading with team.",
     consequence:
-      "Vanguard's pulse onset and Wayfinder's quiet interval reveal safe timing together. Other specialists cannot substitute for those readings. Blind work would add 5 instability per contribution; your shared information removes that risk.",
+      "Glitter Boy's pulse onset and Ley Line Walker's quiet interval reveal safe timing together. Other specialists cannot substitute for those readings. Blind work would add 5 instability per contribution; your shared information removes that risk.",
     target: ".crew-seat:nth-child(2)",
     complete: (v) => v.frequencyKnown,
   },
   {
     title: "Hold a response in reserve",
     instruction:
-      "As Wayfinder, choose Hold capability. Keep Exploit Opening for an ally rather than spending it on yourself.",
+      "As Ley Line Walker, choose Hold capability. Keep Exploit Opening for an ally rather than spending it on yourself.",
     consequence:
       "Holding does not end your opportunities. You can react later in this same team round, even after another specialist acts.",
     target: ".engine-footer",
-    complete: (v) => logged(v, "Mage holds capability"),
+    complete: (v) => logged(v, "Ley Line Walker holds capability"),
   },
   {
     title: "Place systems, then request support",
     instruction:
-      "Switch to Operator. Select The breach, select a marker, Move and commit. Select another marker, Recover and commit. Then Request help.",
+      "Switch to Techno-Wizard. Select The breach, select a marker, Move and commit. Select another marker, Recover and commit. Then Request help.",
     consequence:
       "Move and Recover occupy different modules. Recover primes your next effect for +1; each module accepts only one placement per round. Your request appears in the team channel.",
     target: ".engine-section",
     complete: (v) =>
       v.log.some(
         (entry) =>
-          entry.text.includes("Operator: recover") &&
+          entry.text.includes("Techno-Wizard: recover") &&
           entry.text.includes("prime next effect placement"),
-      ) && logged(v, "Operator requests help"),
+      ) && logged(v, "Techno-Wizard requests help"),
   },
   {
     title: "Spend a card on someone else",
     instruction:
-      "Switch to Wayfinder. Select Exploit Opening, choose Assist, set the recipient to Operator, then commit.",
+      "Switch to Ley Line Walker. Select Exploit Opening, choose Assist, set the recipient to Techno-Wizard, then commit.",
     consequence:
       "Restoring the relay made this card worth +2 support. The card leaves your hand: helping costs an opportunity you could have spent yourself.",
     target: '.action-slots button[title="Assist"]',
     complete: (v) =>
       v.log.some(
         (entry) =>
-          entry.text.includes("Mage: assist operator") &&
+          entry.text.includes("Ley Line Walker: assist systems") &&
           entry.text.includes("Cost: 1 engine piece"),
       ),
   },
   {
     title: "Combine the team's work",
     instruction:
-      "Switch to Operator. Keep The breach selected, select a marker and Contribute. Check the combined output before committing. If Power is empty, donate a core first.",
+      "Switch to Techno-Wizard. Keep The breach selected, select a marker and Contribute. Check the combined output before committing. If Power is empty, donate a core first.",
     consequence:
-      "Your placement, priming and Wayfinder's support combine before the relay doubles the result. The shared objective advances and the stored support is consumed.",
+      "Your placement, priming and Ley Line Walker's support combine before the relay doubles the result. The shared objective advances and the stored support is consumed.",
     target: ".action-section",
-    complete: (v) => logged(v, "Operator: contribute rift"),
+    complete: (v) => logged(v, "Techno-Wizard: contribute rift"),
   },
   {
     title: "Ask for one more",
     instruction:
-      "Switch to Pathfinder and Push twice. Watch the band above the button move as safe tokens leave the bag. Stop when the odds stop being worth it.",
+      "Switch to Juicer and Push twice. Watch the band above the button move as safe tokens leave the bag. Stop when the odds stop being worth it.",
     consequence:
       "Each push makes the next one riskier, because safe tokens leave the bag and hazards always go back in. A hazard costs the whole surge and adds instability, and the second burnout costs more than the first. This is a real loss, not a tutorial reset.",
     target: ".engine-section",
@@ -118,30 +118,30 @@ const lessons: Lesson[] = [
   {
     title: "Spend the surge whole",
     instruction:
-      "As Pathfinder, select The breach, then Commit move. Push again, then Contribute. Acquire Power first if the reserve is empty.",
+      "As Juicer, select The breach, then Commit move. Push again, then Contribute. Acquire Power first if the reserve is empty.",
     consequence:
       "An action spends the entire surge, so you push to the size the action deserves: once for a move, harder for a contribution. Bag tokens reach the same reserves and objective as dice, cards and placements, and every breach contribution still costs 1 shared Power.",
     target: ".action-section",
-    complete: (v) => logged(v, "Scout: contribute rift"),
+    complete: (v) => logged(v, "Juicer: contribute rift"),
   },
   {
     title: "Weave a stronger effect",
     instruction:
-      "Switch to Wayfinder. Spend one Channel card to Move to The breach. Select the remaining Channel and one Resonance together, then Contribute. Donate a core or Acquire Power if needed.",
+      "Switch to Ley Line Walker. Spend one Channel card to Move to The breach. Select the remaining Channel and one Resonance together, then Contribute. Donate a core or Acquire Power if needed.",
     consequence:
       "A two-card weave produces 3 effect (4 if upgraded), doubled by the relay. You are managing combinations, not rolling another specialist's dice.",
     target: ".engine-section",
     complete: (v) =>
       v.log.some(
         (entry) =>
-          entry.text.includes("Mage: contribute rift") &&
+          entry.text.includes("Ley Line Walker: contribute rift") &&
           entry.text.includes("Cost: 2 engine pieces"),
       ),
   },
   {
     title: "Close Greyhaven's breach",
     instruction:
-      "Use the remaining crew capability to reach 24. Vanguard can move with a low die and contribute with high dice. Operator can assist Vanguard if its Uplink is still free. Acquire Power or donate remaining cores when needed.",
+      "Use the remaining crew capability to reach 24. Glitter Boy can move with a low die and contribute with high dice. Techno-Wizard can assist Glitter Boy if its Uplink is still free. Acquire Power or donate remaining cores when needed.",
     consequence:
       "Need fresh pieces? Finish round for each of the four specialists; only then does the world add instability and refill all engines. Rounds 3 and 5 also grow every engine, so a longer mission gives the team more capability as well as more pressure. Engage the patrol at West gate to reduce future pressure, or Recover to lower instability. The sixth round is the deadline.",
     target: ".objective-section",
@@ -160,17 +160,17 @@ type Guidance = {
 // These hints follow client selection and the filtered view; they never commit actions.
 function nextTarget(index: number, view: MissionView, ui: Guidance): string {
   const requiredSeat: (Seat | null)[] = [
-    "soldier",
-    "soldier",
+    "dice",
+    "dice",
     null,
-    "mage",
-    "mage",
-    "operator",
-    "mage",
-    "operator",
-    "scout",
-    "scout",
-    "mage",
+    "cards",
+    "cards",
+    "systems",
+    "cards",
+    "systems",
+    "bag",
+    "bag",
+    "cards",
     null,
   ];
   const seat = requiredSeat[index];
@@ -213,7 +213,7 @@ function nextTarget(index: number, view: MissionView, ui: Guidance): string {
     return `.location-pin.${location}`;
   const requiredPieces = index === 10 && action === "contribute" ? 2 : 1;
   if (ui.pieces.length < requiredPieces) {
-    if (view.seat === "mage") {
+    if (view.seat === "cards") {
       const name =
         index === 6
           ? "Exploit Opening"
@@ -222,14 +222,14 @@ function nextTarget(index: number, view: MissionView, ui: Guidance): string {
             : "Resonance";
       return `.playing-card[aria-label="${name} card"][aria-pressed="false"]`;
     }
-    if (view.seat === "operator")
+    if (view.seat === "systems")
       return '.placement-marker[aria-pressed="false"]';
-    if (view.seat === "scout") return '[data-tutorial="push"]';
+    if (view.seat === "bag") return '[data-tutorial="push"]';
     return '.die[aria-pressed="false"]';
   }
   if (ui.action !== action)
     return `.action-slots button[title="${action[0]!.toUpperCase() + action.slice(1)}"]`;
-  if (action === "assist" && ui.recipient !== "operator")
+  if (action === "assist" && ui.recipient !== "systems")
     return '[aria-label="Assistance recipient"]';
   if (action === "acquire")
     return '[aria-label="Resource to acquire"], [data-tutorial="commit"]';

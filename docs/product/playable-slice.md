@@ -12,15 +12,15 @@ All four players deploy at the relay. Four locations share one state: gate, rela
 
 The objective is 24 stabilization. Every rift contribution consumes 1 shared Power. Restoring the relay consumes an engine commitment and 2 Power, removes the shield, doubles future stabilization output, and causes a visible +1 instability surge.
 
-Each character receives a different private assessment of every map location. Publishing Vanguard's and Wayfinder's breach readings together establishes safe timing; other pairs do not substitute. Alternatively, any character can investigate the archive or rift using capability, or spend 1 shared Knowledge. Unknown timing makes each rift contribution add 5 instability. Shield state and safe timing are separate: knowing the frequency prevents risk but does not remove the shield.
+Each character receives a different private assessment of every map location. Publishing Glitter Boy's and Ley Line Walker's breach readings together establishes safe timing; other pairs do not substitute. Alternatively, any character can investigate the archive or rift using capability, or spend 1 shared Knowledge. Unknown timing makes each rift contribution add 5 instability. Shield state and safe timing are separate: knowing the frequency prevents risk but does not remove the shield.
 
 ### Complementary Evidence
 
 Assessments are authored per specialist and location with known, inferred, uncertain, or character-specific status. Only the owning specialist receives the text until they publish that location's report. Reading and sharing these initial assessments are free and can happen remotely, before action commitment. The original no-target share command publishes the breach reading; targeted sharing publishes one selected location, once per specialist per location.
 
-- West gate: Vanguard identifies an exposed coupling; Pathfinder identifies the patrol's route and orientation. Publishing both reveals a one-use opening: the next valid Engage at the gate gains +1 effect, still paying its normal component and threshold costs.
-- Silent archive: Pathfinder identifies an intact access conduit; Operator detects two usable cells in the circuit. Publishing both reveals a one-use cache: the next Investigate at the archive using engine pieces also gains 2 shared Power. A Knowledge-only investigation does not recover the cache.
-- Breach: Vanguard provides pulse onset and Wayfinder provides the quiet interval. Their specific reports establish safe timing. Investigation remains a paid alternative, so no specialist is mandatory for victory.
+- West gate: Glitter Boy identifies an exposed coupling; Juicer identifies the patrol's route and orientation. Publishing both reveals a one-use opening: the next valid Engage at the gate gains +1 effect, still paying its normal component and threshold costs.
+- Silent archive: Juicer identifies an intact access conduit; Techno-Wizard detects two usable cells in the circuit. Publishing both reveals a one-use cache: the next Investigate at the archive using engine pieces also gains 2 shared Power. A Knowledge-only investigation does not recover the cache.
+- Breach: Glitter Boy provides pulse onset and Ley Line Walker provides the quiet interval. Their specific reports establish safe timing. Investigation remains a paid alternative, so no specialist is mandatory for victory.
 
 Any specialist can exploit a published opportunity using their own engine. Consuming an opportunity is authoritative and atomic with the action; failed commands consume nothing. Relay assessments provide complementary tactical/technical context without an additional bonus. Initial observations are fixed for this authored prototype, not a procedurally generated mystery. The existing scenario goal, engine costs, and world-response rules are unchanged.
 
@@ -50,7 +50,7 @@ A kept core stacks on top of the tier for the dice, systems and bag engines, and
 
 Each specialist starts with one core. Donating gives two shared Power and permanently forfeits its personal upgrade for this mission. Keeping it gives a sixth die, four-effect card combos, a hazard replaced by a double-output jackpot, or a fifth placement marker. The extra die/marker and bag modification apply immediately as well as on future refreshes. Private ambitions describe this temptation rather than rewarding betrayal; there is no campaign XP system in this slice.
 
-All shared resources have universal uses. Power fuels projects. Knowledge can substitute for an investigative engine action. One Materiel can substitute for a one-point recovery. One Influence can substitute for one-point assistance. These alternatives neither occupy an Operator module nor prime it; the preview distinguishes their cost from personal components.
+All shared resources have universal uses. Power fuels projects. Knowledge can substitute for an investigative engine action. One Materiel can substitute for a one-point recovery. One Influence can substitute for one-point assistance. These alternatives neither occupy an Techno-Wizard module nor prime it; the preview distinguishes their cost from personal components.
 
 ## Screens And Seats
 
@@ -62,7 +62,7 @@ A room may also carry shared screens. A client joining with `role: "table"` clai
 
 There is no active-player lock. Any connected specialist may inspect, select, act, publish information, request assistance, or hold during the common action phase. The server serializes commitments and revalidates costs against the latest state.
 
-Assistance consumes the assisting engine's actual components, adds that output to the recipient's next effect, and clears the request. Movement and further assistance preserve a received bonus. For example, the Wayfinder can retain Exploit Opening until the Vanguard restores the relay, then spend that card to amplify a primed Operator contribution. The Operator can later spend its last marker to support the Vanguard's remaining dice.
+Assistance consumes the assisting engine's actual components, adds that output to the recipient's next effect, and clears the request. Movement and further assistance preserve a received bonus. For example, the Ley Line Walker can retain Exploit Opening until the Glitter Boy restores the relay, then spend that card to amplify a primed Techno-Wizard contribution. The Techno-Wizard can later spend its last marker to support the Glitter Boy's remaining dice.
 
 Hold preserves capability without advancing the round or blocking later action. Finish requires a consequence confirmation, marks the player finished, and disallows more spending for that round. Finished players may still publish readings and request assistance. All four finishing triggers the world response and refreshes the engines if the mission survives.
 

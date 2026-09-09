@@ -18,10 +18,10 @@ const sites = {
   rift: [750, 228],
 } as const;
 const colors = {
-  soldier: 0xe5b65c,
-  mage: 0xb09be3,
-  scout: 0x73c4a1,
-  operator: 0x6ab7d8,
+  dice: 0xe5b65c,
+  cards: 0xb09be3,
+  bag: 0x73c4a1,
+  systems: 0x6ab7d8,
 };
 export function BoardCanvas({
   view,

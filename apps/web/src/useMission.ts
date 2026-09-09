@@ -56,7 +56,7 @@ export function useMission(): {
   leave: () => void;
 } {
   const [view, setView] = useState<MissionView | null>(null);
-  const [seat, setSeat] = useState<Seat>("soldier");
+  const [seat, setSeat] = useState<Seat>("dice");
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -92,7 +92,7 @@ export function useMission(): {
   const connect = useCallback(
     async (
       nextMode: Mode = "practice",
-      nextSeat: Seat = "soldier",
+      nextSeat: Seat = "dice",
       id?: string,
     ) => {
       // Two sockets for one seat race each other on the server, and the loser

@@ -171,7 +171,7 @@ export const missionMap: MissionMapDefinition = missionMapSchema.parse({
     bag: { q: -1, r: 3 },
     systems: { q: -1, r: -3 },
   },
-  hexesPerEffect: 8,
+  hexesPerEffect: 10,
   siteRadius: 3,
   sizes: { small: 0, standard: 1, large: 2 },
 });

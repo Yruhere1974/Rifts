@@ -9,3 +9,6 @@ test-results/
 .env
 .env.*
 !.env.example
+
+# Agent worktrees
+.claude/worktrees/

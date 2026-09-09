@@ -2821,3 +2821,30 @@ select {
   font-size: 11px;
   color: #c3b98d;
 }
+
+/* ---- Board tooltip ----
+   A stopgap until the board has icons: says what is standing on a hex. It sits
+   above the canvas and must never intercept the click it is describing. */
+.board-canvas {
+  position: relative;
+}
+.board-tip {
+  position: absolute;
+  transform: translate(12px, -50%);
+  pointer-events: none;
+  z-index: 2;
+  max-width: 190px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid #3a4842;
+  background: #0f1614f2;
+  color: #e8e4d5;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-tip.flip {
+  transform: translate(calc(-100% - 12px), -50%);
+}

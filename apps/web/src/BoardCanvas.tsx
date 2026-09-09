@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Application, Container, Graphics } from "pixi.js";
 import type { MissionPlayer, MissionPublicState, Seat } from "@rifts/rules";
 import { missionMap } from "@rifts/content";
@@ -257,6 +257,41 @@ function hexAtPixel(x: number, y: number): Hex | null {
   return best && best.distance <= (HEX * 1.4) ** 2 ? best.hex : null;
 }
 
+/** Every object hex, and the site each belongs to, for naming what is hovered. */
+const objectAt = new Map(
+  missionMap.objects.map((object) => [hexKey(object.hex), object]),
+);
+const siteOf = new Map<string, string>();
+for (const area of siteAreas)
+  for (const cell of area.cells)
+    if (!siteOf.has(cell)) siteOf.set(cell, area.name);
+const siteTitles: Record<string, string> = {
+  gate: "West gate",
+  relay: "Reactor relay",
+  archive: "Silent archive",
+  rift: "The breach",
+};
+
+/**
+ * A plain description of what is standing on a hex. The board has no icons
+ * yet, so this is how a player finds out what they are looking at.
+ */
+function describe(hex: Hex, view: BoardView | null): string {
+  const key = hexKey(hex);
+  const enemy = view?.enemies.find((foe) => hexKey(foe.position) === key);
+  if (enemy) return `${enemy.name} — strength ${enemy.strength}`;
+  const unit = view?.players.find(
+    (player) => hexDistance(player.position, hex) <= player.size,
+  );
+  if (unit) return unit.seat === view?.seat ? `${unit.name} — you` : unit.name;
+  const object = objectAt.get(key);
+  if (object)
+    return `${object.name} — ${siteTitles[object.site] ?? object.site}`;
+  const site = siteOf.get(key);
+  if (site) return siteTitles[site] ?? site;
+  return openKeys.has(key) ? "Open floor" : "Solid rock";
+}
+
 export function BoardCanvas({
   view,
   selected,
@@ -278,6 +313,13 @@ export function BoardCanvas({
   focus?: { centre: Hex; radius: number } | undefined;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const [hover, setHover] = useState<{
+    text: string;
+    x: number;
+    y: number;
+    /** Sit on the left of the cursor instead, so an edge cannot clip it. */
+    flip: boolean;
+  } | null>(null);
   const latest = useRef({ view, selected, onSelect, reachable, focus });
   useEffect(() => {
     latest.current = { view, selected, onSelect, reachable, focus };
@@ -358,6 +400,21 @@ export function BoardCanvas({
 
         app.stage.eventMode = "static";
         app.stage.hitArea = app.screen;
+        app.stage.on("pointermove", (event) => {
+          const point = world.toLocal(event.global);
+          const hex = hexAtPixel(point.x, point.y);
+          setHover(
+            hex
+              ? {
+                  text: describe(hex, latest.current.view),
+                  x: event.global.x,
+                  y: event.global.y,
+                  flip: event.global.x > app.screen.width * 0.6,
+                }
+              : null,
+          );
+        });
+        app.stage.on("pointerleave", () => setHover(null));
         app.stage.on("pointertap", (event) => {
           const point = world.toLocal(event.global);
           const hex = hexAtPixel(point.x, point.y);
@@ -506,5 +563,17 @@ export function BoardCanvas({
     };
   }, []);
 
-  return <div className="board-canvas" ref={hostRef} />;
+  return (
+    <div className="board-canvas" ref={hostRef}>
+      {hover && (
+        <span
+          className={`board-tip${hover.flip ? " flip" : ""}`}
+          style={{ left: hover.x, top: hover.y }}
+          role="status"
+        >
+          {hover.text}
+        </span>
+      )}
+    </div>
+  );
 }

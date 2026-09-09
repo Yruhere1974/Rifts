@@ -19,15 +19,17 @@ const engineRules: Record<
     rules: [
       "Allocate dice to systems, then fire a system. Drive powers Move, Targeting powers Engage, Stabilizer powers Contribute and Shield powers Recover. Allocation is free and reversible until the system fires.",
       "A die in a system is worth 1, or 2 if it shows 4 or more. Firing spends everything in that system at once, so a heavily loaded system is one big commitment rather than several small ones.",
+      "A calibrated system does far more with the same dice. Matching faces lock it on and double its output; three or more consecutive faces spin it up and add the length of the run. Mismatched dice still fire, for what they are individually worth.",
+      "Hold over keeps a die through the refill with its face intact. It does nothing for you this round, which is the price: you are buying a future combination with this round's capability, and a held die counts against your allotment rather than adding to it.",
       "The Boom Gun doubles every die in it, but it cannot fire unbraced: Bracing must hold a die, and that die is spent with the shot for no output of its own. Engaging fires Targeting, Boom Gun and Bracing together.",
       "Assist, Acquire and Investigate are pilot work, not platform work. Each takes a single die still loose in the tray, and Assist still needs a 3 or better.",
     ],
     growth:
-      "Field experience adds a sixth die in round 3 and a seventh in round 5. More dice mean more systems can be live at once, not stronger single systems: a 4+ die is still worth 2 and no threshold moves. Keeping your core adds one more on top.",
+      "Field experience adds a sixth die in round 3 and a seventh in round 5. More dice mean more systems live at once and a better chance of assembling a set or a run, which is where the extra reach actually shows. Keeping your core adds one more on top.",
     cooperation:
       "A loaded Boom Gun is three dice that cannot move you, shield you or stabilise the breach. That is the trade the rest of the team is relying on you to make: hold the hall and hit hard, or stay mobile and contribute steadily.",
     example:
-      "Two dice into Drive carries you to the gate. A 5 into Targeting, a 6 into the Boom Gun and any die into Bracing removes 2 + (2 x 2) = 6 patrol strength in one shot, and empties the tray. Leaving the Boom Gun loaded but unbraced wastes it entirely, which the panel says before you commit.",
+      "Two dice into Drive carries you to the gate. A 5 into Targeting, a 6 into the Boom Gun and any die into Bracing takes 2 + (2 x 2) = 6 off a patrol in one shot, and empties the tray. Two matching 5s in Targeting would have doubled that half of it instead. Leaving the Boom Gun loaded but unbraced wastes it entirely, which the panel says before you commit.",
   },
   cards: {
     kit: "Five cards each round: two Channel, two Resonance, and one Exploit Opening. Played cards leave your hand until the next round.",

@@ -2848,3 +2848,20 @@ select {
 .board-tip.flip {
   transform: translate(calc(-100% - 12px), -50%);
 }
+
+/* ---- Calibration and hold ---- */
+.facet.tuned {
+  border-color: #e3d797;
+  box-shadow: inset 0 0 0 1px #e3d79733;
+}
+.facet.tuned .facet-output {
+  color: #e3d797;
+}
+.facet.keep {
+  border-style: dashed;
+  border-color: #6f8a7e;
+  background: #141d1c;
+}
+.facet.keep .facet-output {
+  color: #8fb0a0;
+}

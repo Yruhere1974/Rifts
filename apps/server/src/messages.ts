@@ -41,6 +41,7 @@ export const commandSchema = z.discriminatedUnion("type", [
         "boom",
         "stabilizer",
         "shield",
+        "locked",
       ])
       .nullable(),
   }),

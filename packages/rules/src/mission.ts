@@ -50,6 +50,13 @@ export const glitterFacets = [
   "shield",
 ] as const;
 export type GlitterFacet = (typeof glitterFacets)[number];
+/**
+ * Where a die sits: loose in the tray, committed to a system, or locked. A
+ * locked die does nothing this round and survives the refill with its face,
+ * which is how a partial combination is carried forward. The cost is built in:
+ * a die you lock is a die you did not spend.
+ */
+export type DieSlot = GlitterFacet | "locked" | null;
 /** Which facet each verb draws on. The rest are pilot work, not platform work. */
 export const facetForAction: Partial<Record<MissionAction, GlitterFacet>> = {
   move: "mobility",
@@ -59,7 +66,7 @@ export const facetForAction: Partial<Record<MissionAction, GlitterFacet>> = {
 };
 export type MissionCommand =
   | { type: "share"; target?: MissionLocation | undefined }
-  | { type: "allocate"; die: string; facet: GlitterFacet | null }
+  | { type: "allocate"; die: string; facet: DieSlot }
   | { type: "act"; action: MissionAction; target: string; pieces: string[] }
   | { type: "request"; target: string }
   | {
@@ -98,7 +105,7 @@ export type MissionCard = {
 export type MissionToken = { id: string; kind: string };
 export type MissionEngine = {
   /** `facet` is null while a die is still loose in the tray. */
-  dice: { id: string; value: number; facet: GlitterFacet | null }[];
+  dice: { id: string; value: number; facet: DieSlot }[];
   hand: MissionCard[];
   /** Safe tokens from the current push. A hazard clears them; it never joins. */
   pending: MissionToken[];
@@ -380,6 +387,32 @@ export function reachable(
   return seen;
 }
 
+/**
+ * How well a system is calibrated. Matched faces lock it on and double its
+ * output; consecutive faces spin it up and add the length of the run. Junk
+ * still fires, just for what the dice are individually worth, so reading a
+ * roll well pays without a bad roll shutting the platform down.
+ */
+export function coherence(dice: readonly { value: number }[]): {
+  label: string | null;
+  apply: (base: number) => number;
+} {
+  if (dice.length < 2) return { label: null, apply: (base) => base };
+  const faces = dice.map((die) => die.value).sort((a, b) => a - b);
+  if (faces.every((face) => face === faces[0]))
+    return { label: "locked on", apply: (base) => base * 2 };
+  const run =
+    new Set(faces).size === faces.length &&
+    faces.every((face, index) => index === 0 || face === faces[index - 1]! + 1);
+  if (run && faces.length >= 3)
+    return { label: "spun up", apply: (base) => base + faces.length };
+  return { label: null, apply: (base) => base };
+}
+
+/** A system's total: what its dice are worth, then how well they fit together. */
+export const systemOutput = (dice: readonly { value: number }[]): number =>
+  coherence(dice).apply(diceOutput(dice));
+
 /** What a group of dice is worth: a 4+ die counts double, as it always has. */
 export const diceOutput = (dice: readonly { value: number }[]): number =>
   dice.reduce((sum, die) => sum + (die.value >= 4 ? 2 : 1), 0);
@@ -387,7 +420,7 @@ export const diceOutput = (dice: readonly { value: number }[]): number =>
 /** The dice committed to one platform system. */
 export const facetDice = (
   engine: MissionEngine,
-  facet: GlitterFacet,
+  facet: DieSlot,
 ): MissionEngine["dice"] => engine.dice.filter((die) => die.facet === facet);
 
 export function hasReports(
@@ -448,6 +481,9 @@ function refill(state: MissionState, seat: Seat): void {
   const upgraded =
     state.players.find((player) => player.seat === seat)?.upgraded ?? false;
   const prefix = `${seat}-${state.round}`;
+  // Locked dice are the ones the pilot chose not to spend. They keep their
+  // faces through the refill, and the tray is topped back up around them.
+  const kept = p.engine.dice.filter((die) => die.facet === "locked");
   p.engine = {
     dice: [],
     hand: [],
@@ -461,11 +497,17 @@ function refill(state: MissionState, seat: Seat): void {
   const tier = engineTier(state.round);
   const bonus = tier + (upgraded ? 1 : 0);
   if (seat === "dice")
-    p.engine.dice = Array.from({ length: 5 + bonus }, (_, i) => ({
-      id: `${prefix}-die-${i}`,
-      value: 1 + Math.floor(random(state) * 6),
-      facet: null,
-    }));
+    p.engine.dice = [
+      ...kept,
+      ...Array.from(
+        { length: Math.max(0, 5 + bonus - kept.length) },
+        (_, i) => ({
+          id: `${prefix}-die-${i}`,
+          value: 1 + Math.floor(random(state) * 6),
+          facet: null as DieSlot,
+        }),
+      ),
+    ];
   if (seat === "cards")
     p.engine.hand = shuffle(
       state,
@@ -679,6 +721,7 @@ function commandValid(value: unknown): value is MissionCommand {
       Object.keys(c).length === 3 &&
       typeof c.die === "string" &&
       (c.facet === null ||
+        c.facet === "locked" ||
         (typeof c.facet === "string" &&
           (glitterFacets as readonly string[]).includes(c.facet)))
     );
@@ -738,9 +781,11 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
             ? deny("That die is not in your tray.")
             : allow(
                 "None",
-                command.facet
-                  ? `Commit that die to ${command.facet}. Allocation is free; the dice are spent when the system fires.`
-                  : "Return that die to the tray.",
+                command.facet === "locked"
+                  ? "Lock that die: it does nothing this round and keeps its face through the refill. You are buying a future combination with this round's capability."
+                  : command.facet
+                    ? `Commit that die to ${command.facet}. Allocation is free; the dice are spent when the system fires.`
+                    : "Return that die to the tray.",
               );
       case "share":
         return view.reports.some(
@@ -856,12 +901,12 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
         !spent.every((die) => pieces.includes(die.id))
       )
         return deny(`Commit everything allocated to ${facet}.`);
-      amount = diceOutput(committed);
+      amount = systemOutput(committed);
       if (boom.length && !brace.length)
         return deny(
           "The Boom Gun cannot fire unbraced. Allocate a die to bracing, or take the Boom Gun dice off.",
         );
-      amount += diceOutput(boom) * 2;
+      amount += systemOutput(boom) * 2;
     } else {
       // Pilot work rather than platform work: one loose die, as before.
       const die = e.dice.find((d) => d.id === pieces[0] && d.facet === null);
@@ -983,6 +1028,10 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     knowledgeCost: fallback && !reserveCost ? 1 : 0,
     reserveCost,
   };
+  const calibration =
+    view.seat === "dice" && facetForAction[action]
+      ? coherence(facetDice(e, facetForAction[action])).label
+      : null;
   let effect: string;
   switch (action) {
     case "move": {
@@ -1034,7 +1083,11 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       }
       break;
   }
-  return allow(cost, effect, event);
+  return allow(
+    cost,
+    calibration ? `${effect} System ${calibration}.` : effect,
+    event,
+  );
 }
 export function previewAction(
   view: MissionView,

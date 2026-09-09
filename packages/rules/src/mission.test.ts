@@ -14,7 +14,9 @@ import {
   missionSeats,
   playerView,
   previewAction,
+  coherence,
   diceOutput,
+  systemOutput,
   facetForAction,
   worldPressure,
   reachable,
@@ -513,6 +515,54 @@ describe("Greyhaven mission", () => {
       braced.log.some((entry) => entry.text.includes("holds the line")),
     ).toBe(true);
   });
+  it("pays a calibrated system better than a numerous one", () => {
+    // The same count of dice is worth more when it fits together.
+    expect(systemOutput([{ value: 2 }, { value: 3 }])).toBe(2);
+    expect(systemOutput([{ value: 2 }, { value: 2 }])).toBe(4);
+    // 1 + 1 + 2 for the faces, then +3 for a run of three.
+    expect(systemOutput([{ value: 2 }, { value: 3 }, { value: 4 }])).toBe(7);
+    expect(coherence([{ value: 5 }, { value: 5 }]).label).toBe("locked on");
+    expect(coherence([{ value: 3 }, { value: 4 }, { value: 5 }]).label).toBe(
+      "spun up",
+    );
+    // Junk still fires, it is simply worth what the dice are worth.
+    expect(coherence([{ value: 1 }, { value: 4 }]).label).toBeNull();
+    expect(systemOutput([{ value: 1 }, { value: 4 }])).toBe(3);
+  });
+
+  it("carries a locked die and its face into the next round", () => {
+    let s = createMission();
+    const tray = () => s.private.dice.engine.dice;
+    const keeper = tray()[0]!;
+    s = act(s, "dice", {
+      type: "allocate",
+      die: keeper.id,
+      facet: "locked",
+    });
+
+    // Locked dice are out of play this round: they cannot fire a system.
+    expect(
+      applyCommand(s, "dice", {
+        type: "act",
+        action: "acquire",
+        target: "power",
+        pieces: [keeper.id],
+      }).error,
+    ).not.toBeNull();
+
+    const next = round(s);
+    const carried = next.private.dice.engine.dice.find(
+      (die) => die.id === keeper.id,
+    );
+    // Same die, same face, still locked, and the tray is topped up around it.
+    expect(carried?.value).toBe(keeper.value);
+    expect(carried?.facet).toBe("locked");
+    expect(next.private.dice.engine.dice).toHaveLength(5);
+    expect(
+      next.private.dice.engine.dice.filter((die) => die.facet === null),
+    ).toHaveLength(4);
+  });
+
   it("makes the platform choose between moving, shooting and holding still", () => {
     let s = createMission();
     const tray = () => s.private.dice.engine.dice;

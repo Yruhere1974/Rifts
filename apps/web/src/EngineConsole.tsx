@@ -16,12 +16,8 @@ import {
   Plus,
   Hexagon,
 } from "lucide-react";
-import type {
-  GlitterFacet,
-  MissionView,
-  MissionAction,
-  Seat,
-} from "@rifts/rules";
+import { coherence } from "@rifts/rules";
+import type { DieSlot, MissionView, MissionAction, Seat } from "@rifts/rules";
 import { specialists } from "@rifts/content";
 import {
   MOTION,
@@ -250,9 +246,9 @@ function Die({
  * are read rather than snapped into place. Committed dice unmount, so the
  * spend gets one brief flash across the tray and nothing more.
  */
-/** The platform's systems, in the order the panel reads them. */
+/** The platform's systems, plus the hold that carries a die into next round. */
 const facetPanel: {
-  facet: GlitterFacet;
+  facet: DieSlot;
   name: string;
   note: string;
 }[] = [
@@ -262,6 +258,7 @@ const facetPanel: {
   { facet: "bracing", name: "Bracing", note: "Holds the shot steady" },
   { facet: "stabilizer", name: "Stabilizer", note: "Contribute" },
   { facet: "shield", name: "Shield", note: "Recover" },
+  { facet: "locked", name: "Hold over", note: "Keeps its face next round" },
 ];
 
 function DiceEngine({
@@ -270,7 +267,7 @@ function DiceEngine({
   piece,
   onAllocate,
 }: EngineProps & {
-  onAllocate: (die: string, facet: GlitterFacet | null) => void;
+  onAllocate: (die: string, facet: DieSlot) => void;
 }) {
   const dice = view.engine.dice;
   const reduced = useReducedMotion();
@@ -319,10 +316,12 @@ function DiceEngine({
             0,
           );
           const inert = entry.facet === "boom" && inside.length > 0 && !braced;
+          const fit = entry.facet === "locked" ? null : coherence(inside).label;
+          const tuned = fit ? coherence(inside).apply(output) : output;
           return (
             <button
               key={entry.facet}
-              className={`facet${inside.length ? " loaded" : ""}${inert ? " inert" : ""}`}
+              className={`facet${inside.length ? " loaded" : ""}${inert ? " inert" : ""}${fit ? " tuned" : ""}${entry.facet === "locked" ? " keep" : ""}`}
               data-facet={entry.facet}
               aria-label={`${entry.name} system`}
               disabled={!held}
@@ -355,11 +354,15 @@ function DiceEngine({
                 ))}
               </span>
               <span className="facet-output">
-                {inert
-                  ? "UNBRACED"
-                  : output
-                    ? `${entry.facet === "boom" ? output * 2 : output} output`
-                    : "empty"}
+                {entry.facet === "locked"
+                  ? inside.length
+                    ? `${inside.length} held for next round`
+                    : "nothing held"
+                  : inert
+                    ? "UNBRACED"
+                    : output
+                      ? `${entry.facet === "boom" ? tuned * 2 : tuned} output${fit ? ` — ${fit}` : ""}`
+                      : "empty"}
               </span>
             </button>
           );
@@ -738,7 +741,7 @@ export function EngineConsole({
   onSelect: (id: string) => void;
   onDraw: () => void;
   onAction: (action: MissionAction) => void;
-  onAllocate: (die: string, facet: GlitterFacet | null) => void;
+  onAllocate: (die: string, facet: DieSlot) => void;
 }) {
   const disabled =
     view.phase !== "action" ||

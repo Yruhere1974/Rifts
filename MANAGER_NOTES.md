@@ -77,6 +77,14 @@ Adding a web dependency or changing `vite.config.ts` also needs the web dev serv
 
 ## In Flight
 
+- The dice engine now rewards playing well rather than only placing well. Two mechanics, designed together. Calibration: a system fed matching faces locks on and doubles its output, and three or more consecutive faces spin it up and add the run's length. Mismatched dice still fire for what they are worth, so this is a performance gradient rather than a gate. Holding: a die can be locked, doing nothing this round and surviving the refill with its face, which is how a partial set is carried forward.
+
+- The cost of holding is built in rather than invented: a locked die is one you did not spend, and it counts against the allotment instead of adding to it. Simulated hoarding confirms it self-limits without a cap. Locking everything for two rounds reaches a matched set of three and never improves after that, because freezing dice does not accumulate more of them, while instability reaches 11 of 12 by the fourth round and the mission is lost on the fifth.
+
+- The diagnosis this fixes, for the record: every engine emits one number into the same verb, so depth has to live in what an engine requires, not in what it outputs. Measured by how much more a good player extracts from the same materials, the card engine had real headroom, the bag engine had it in knowing when to stop, and the dice engine had none at all: expert and novice extracted the same total and only the destination differed.
+
+- The same shape is still open for the other three: matched token kinds in a surge, longer chains for the Ley Line Walker, modules feeding adjacent modules for the Techno-Wizard.
+
 - Juicer burnout now charges for what was at stake: one instability per token lost, plus one for each burnout already taken this round. Busting with an empty hand risked nothing and so costs nothing, though the hazard still returns to the bag and stress still rises, which makes every later push worse. Over 200 seeds the mean cost of building a two-token surge fell from 1.86 to 0.98 and runs reaching six or more instability halved. Pushing for three or four is still expensive, which is the point: there is now a cheap efficient line and greed is a real gamble rather than a tax.
 
 - That closes the outstanding defect in the push-your-luck engine, so the Juicer and the Glitter Boy are both mechanically complete. Neither has been played by a person yet, which is the actual lock.

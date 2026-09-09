@@ -2303,3 +2303,286 @@ select {
   animation: rifts-ignite var(--motion-settle) var(--ease-settle) both;
   animation-delay: var(--motion-delay, 0ms);
 }
+/* ---- Engine console motion ----
+   The four consoles speaking the vocabulary above. Nothing here restyles an
+   existing rule; the few repeated selectors only establish the positioning
+   contexts the one-shot overlays need.
+
+   The global prefers-reduced-motion block disables every animation below, so
+   each overlay is also invisible at rest: an element that exists only to fade
+   out must not be left painted when its animation never runs. */
+.dice-tray,
+.card-hand,
+.token-tray,
+.bag-engine {
+  position: relative;
+}
+
+/* Arriving, for components that already carry a transform of their own. This
+   is `rifts-settle-in` expressed through the independent translate/scale
+   properties, so it composes with the `transform` that .die.selected,
+   .bag-token.selected and :hover set, and with `backwards` fill so the stagger
+   delay holds the start without pinning the end. */
+@keyframes rifts-arrive {
+  from {
+    opacity: 0;
+    translate: 0 -9px;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+.motion-arrive {
+  animation: rifts-arrive var(--motion-settle) var(--ease-enter) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+/* Dice: a steady sheen marks the dice that can Engage. It never pulses; the
+   point is reading the whole tray at a glance, not drawing the eye to one. */
+.die.can-engage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  pointer-events: none;
+  background: linear-gradient(
+    152deg,
+    #ffffffb5 0%,
+    #ffffff2e 33%,
+    #ffffff00 57%
+  );
+  box-shadow: inset 0 0 0 1px #b98f3f66;
+}
+
+/* Dice: committed dice unmount, so the spend is one flash across the tray. */
+@keyframes rifts-tray-spend {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.tray-spend {
+  position: absolute;
+  inset: -4px;
+  border-radius: 9px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    92deg,
+    #f0e2ae00 0%,
+    #f0e2ae33 46%,
+    #f0e2ae00 100%
+  );
+  animation: rifts-tray-spend var(--motion-settle) var(--ease-exit) both;
+}
+
+/* Cards: the weave. One Channel plus one Resonance is the only legal pairing,
+   so it is the only thing that draws a thread. The thread is drawn once, then
+   kept gently alive by a single bead running Channel to Resonance. */
+.card-weave {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+@keyframes rifts-weave-draw {
+  from {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 0.85;
+  }
+}
+.weave-thread {
+  fill: none;
+  stroke: #d9c0ef;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 5px #b98fd8aa);
+  animation: rifts-weave-draw var(--motion-settle) var(--ease-enter) both;
+}
+@keyframes rifts-weave-flow {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.weave-spark {
+  fill: none;
+  stroke: #fbf1ff;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 0.07 0.93;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 4px #e8d2ff);
+  animation: rifts-weave-flow calc(var(--motion-ambient) * 1.6) linear infinite;
+  animation-delay: var(--motion-settle);
+}
+@keyframes rifts-weave-node {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+.weave-node {
+  fill: #f1e4ff;
+  opacity: 0.85;
+  animation: rifts-weave-node calc(var(--motion-ambient) * 1.2) ease-in-out
+    infinite;
+}
+
+/* Bag: a drawn token is a single beat, not a dealt hand, so it lands quicker
+   than the trays that cascade. */
+.bag-token.motion-arrive {
+  animation-duration: var(--motion-quick);
+}
+
+/* Bag: the one place agitation is information. The live bust band tunes the
+   shared tremor, so the panel hums while the odds are safe and is visibly
+   restless by REDLINE. Small numbers on purpose: this has to be liveable for
+   a whole round, and the odds themselves are still printed underneath. */
+.bag-engine[data-band="NOMINAL"] {
+  --motion-amplitude: 0.4px;
+  --motion-tempo: 2400ms;
+}
+.bag-engine[data-band="AMPED"] {
+  --motion-amplitude: 0.85px;
+  --motion-tempo: 1350ms;
+}
+.bag-engine[data-band="REDLINE"] {
+  --motion-amplitude: 1.5px;
+  --motion-tempo: 740ms;
+}
+.bag-engine[data-band="BURNOUT"] {
+  --motion-amplitude: 2.4px;
+  --motion-tempo: 460ms;
+}
+
+/* Bag: burnout. The surge is destroyed, so it dies on screen instead of
+   vanishing. The ghosts deliberately do not reuse .bag-token: that class is
+   the count of a live surge, and the e2e drive reads it as one. */
+.surge-loss {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  pointer-events: none;
+}
+/* Out of flow, or the panel's flex gap would leave a hole beside the tray. */
+.burnout {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+@keyframes rifts-surge-lost {
+  from {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    translate: 0 17px;
+    rotate: -9deg;
+    scale: 0.82;
+  }
+}
+.lost-token {
+  width: 53px;
+  height: 53px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0;
+  background: #6d4238;
+  border: 3px solid #b8724f;
+  box-shadow: 0 3px 0 #46231c;
+  animation: rifts-surge-lost calc(var(--motion-settle) * 1.3) var(--ease-exit)
+    both;
+  animation-delay: var(--motion-delay, 0ms);
+}
+@keyframes rifts-burnout-flash {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.burnout-flash {
+  position: absolute;
+  inset: -8px;
+  border-radius: 14px;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(115% 130% at 26% 42%, #ff8a4c4d, #ff8a4c00 64%);
+  animation: rifts-burnout-flash calc(var(--motion-settle) * 1.4)
+    var(--ease-exit) both;
+}
+
+/* Bag: the hazard is not spent, it goes back in. Players forget that rule, so
+   the token is walked home rather than explained again. */
+@keyframes rifts-hazard-return {
+  0% {
+    opacity: 0;
+    translate: 150px 6px;
+    scale: 1.2;
+  }
+  15% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: 4px 34px;
+    scale: 0.35;
+  }
+}
+.hazard-return {
+  position: absolute;
+  left: 31px;
+  top: 24px;
+  width: 29px;
+  height: 29px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  color: #ffdcc6;
+  background: #8c3f2a;
+  border: 2px solid #d97c56;
+  animation: rifts-hazard-return calc(var(--motion-travel) * 1.1)
+    var(--ease-settle) both;
+  animation-delay: var(--motion-settle);
+}
+
+/* Systems: the current runs left to right through the modules still open, so
+   priming reads as sequencing toward the next placement rather than as a line
+   of text. Occupied modules are opaque and mask it, which is the point. */
+.system-modules.motion-current {
+  --motion-current-color: #8fd3d05c;
+  border-radius: 4px;
+}

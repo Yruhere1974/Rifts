@@ -1,5 +1,13 @@
-import { playableMission, specialistFor } from "@rifts/content";
-import type { EngineFamily } from "@rifts/shared";
+import { missionMap, playableMission, specialistFor } from "@rifts/content";
+import {
+  footprint,
+  hexDistance,
+  hexKey,
+  hexesWithin,
+  parseHex,
+  type EngineFamily,
+  type Hex,
+} from "@rifts/shared";
 /**
  * A seat is an engine family, not a class. Classes are authored content and
  * never appear in this module; see docs/product/class-lineup.md.
@@ -45,7 +53,12 @@ export type MissionResources = {
 export type MissionPlayer = {
   seat: Seat;
   name: string;
-  location: MissionLocation;
+  /** Anchor hex. The unit covers every hex within `size` of it. */
+  position: Hex;
+  /** Footprint radius: 0 small, 1 standard, 2 large. */
+  size: number;
+  /** Derived from position: the site this unit is standing in, if any. */
+  location: MissionLocation | null;
   holding: boolean;
   ready: boolean;
   upgraded: boolean;
@@ -140,6 +153,8 @@ export type MissionPreview = {
   cost: string;
   effect: string;
   reason: string;
+  /** Hexes this commitment could move, for a Move preview. Zero otherwise. */
+  range: number;
 };
 /** Normalized output of any engine; contains no private piece identities. */
 export type MissionActionEvent = {
@@ -153,6 +168,12 @@ export type MissionActionEvent = {
 };
 type ActionPlan = MissionPreview & { event: MissionActionEvent | null };
 const locations: readonly string[] = ["gate", "relay", "archive", "rift"];
+const locationNames: Record<MissionLocation, string> = {
+  gate: "the West gate",
+  relay: "the relay",
+  archive: "the archive",
+  rift: "the breach",
+};
 const resourceNames: readonly string[] = [
   "materiel",
   "power",
@@ -245,6 +266,65 @@ const perceptions: Record<
     },
   },
 };
+const openHexes = new Set(missionMap.open);
+const unitSize = (seat: Seat): number => specialistFor(seat).size;
+
+/** A unit may stand here only if its whole footprint is open rock-free floor. */
+const footprintClear = (anchor: Hex, size: number): boolean =>
+  footprint(anchor, size).every((cell) => openHexes.has(hexKey(cell)));
+
+/** Units are solid: two footprints may never overlap. */
+const overlaps = (
+  anchor: Hex,
+  size: number,
+  others: readonly MissionPlayer[],
+): boolean =>
+  others.some(
+    (other) => hexDistance(anchor, other.position) <= size + other.size,
+  );
+
+/** The site a unit of this size standing here counts as being at. */
+export function siteAt(anchor: Hex, size: number): MissionLocation | null {
+  // Nearest, not first: a large unit's reach can overlap two site areas.
+  let best: { site: MissionLocation; distance: number } | null = null;
+  for (const [name, hex] of Object.entries(missionMap.sites)) {
+    const distance = hexDistance(anchor, hex);
+    if (distance > size + missionMap.siteRadius) continue;
+    if (!best || distance < best.distance)
+      best = { site: name as MissionLocation, distance };
+  }
+  return best?.site ?? null;
+}
+
+/**
+ * Anchors reachable within `steps`, walking one hex at a time. Only rock
+ * blocks the route: allies squeeze past one another, and a unit may simply not
+ * come to rest overlapping one. Terrain still limits a large unit's routes.
+ */
+export function reachable(
+  from: Hex,
+  size: number,
+  steps: number,
+): Map<string, number> {
+  const seen = new Map<string, number>([[hexKey(from), 0]]);
+  let frontier: Hex[] = [from];
+  for (let step = 1; step <= steps; step++) {
+    const next: Hex[] = [];
+    for (const here of frontier) {
+      for (const candidate of hexesWithin(here, 1)) {
+        const key = hexKey(candidate);
+        if (seen.has(key)) continue;
+        if (!footprintClear(candidate, size)) continue;
+        seen.set(key, step);
+        next.push(candidate);
+      }
+    }
+    frontier = next;
+    if (!frontier.length) break;
+  }
+  return seen;
+}
+
 export function hasReports(
   view: Pick<MissionPublicState, "reports">,
   location: MissionLocation,
@@ -406,7 +486,9 @@ export function createMission(seed = 1): MissionState {
     players: missionSeats.map((seat) => ({
       seat,
       name: specialistFor(seat).className,
-      location: "relay",
+      position: { ...missionMap.deploy[seat] },
+      size: unitSize(seat),
+      location: siteAt(missionMap.deploy[seat], unitSize(seat)),
       holding: false,
       ready: false,
       upgraded: false,
@@ -532,18 +614,20 @@ function commandValid(value: unknown): value is MissionCommand {
   );
 }
 function plan(view: MissionView, command: MissionCommand): ActionPlan {
+  let range = 0;
   const deny = (reason: string): ActionPlan => ({
     allowed: false,
     cost: "None",
     effect: "None",
     reason,
+    range,
     event: null,
   });
   const allow = (
     cost: string,
     effect: string,
     event: MissionActionEvent | null = null,
-  ): ActionPlan => ({ allowed: true, cost, effect, reason: "", event });
+  ): ActionPlan => ({ allowed: true, cost, effect, reason: "", range, event });
   if (!commandValid(command)) return deny("Malformed command.");
   if (view.phase !== "action") return deny("Mission has ended.");
   const player = view.players.find((p) => p.seat === view.seat);
@@ -612,8 +696,7 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
   if (new Set(pieces).size !== pieces.length)
     return deny("A piece cannot be spent twice.");
   if (action === "move") {
-    if (!locations.includes(target) || target === player.location)
-      return deny("Choose a different map location.");
+    if (!parseHex(target)) return deny("Choose a hex to move to.");
   } else if (action === "assist") {
     if (!missionSeats.some((s) => s === target) || target === view.seat)
       return deny("Choose another seat to assist.");
@@ -701,7 +784,7 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
   } else {
     if (pieces.length !== 1 || !e.markers.includes(pieces[0] ?? ""))
       return deny("Select one available placement marker.");
-    if (e.slots.includes(action))
+    if (action !== "move" && e.slots.includes(action))
       return deny("That action module is occupied until next round.");
     amount = e.slots.includes("primed") ? 2 : 1;
   }
@@ -724,20 +807,68 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
   )
     discovery = "cache";
   if (enhanced) amount += view.boosts[view.seat];
+  let moveSteps = 0;
+  let moveTarget = target;
+  if (action === "move") {
+    // Engine output buys distance: the map's scale converts effect to hexes.
+    range = amount * missionMap.hexesPerEffect;
+    const destination = parseHex(target)!;
+    if (hexKey(destination) === hexKey(player.position))
+      return deny("Choose a different hex.");
+    if (!footprintClear(destination, player.size))
+      return deny(
+        player.size > 1
+          ? "Too tight for a unit this size. A narrower unit could pass."
+          : "That hex is solid rock.",
+      );
+    const others = view.players.filter((entry) => entry.seat !== view.seat);
+    const routes = reachable(player.position, player.size, range);
+    const free = (hex: Hex) => !overlaps(hex, player.size, others);
+    const direct = routes.get(hexKey(destination));
+    if (direct !== undefined && free(destination)) {
+      moveSteps = direct;
+      moveTarget = hexKey(destination);
+    } else {
+      // Heading for a distant objective moves as far as the commitment allows
+      // rather than refusing, so the map is navigable without pixel-hunting.
+      let best: { key: string; distance: number; steps: number } | null = null;
+      for (const [key, steps] of routes) {
+        const hex = parseHex(key);
+        if (!hex || !free(hex)) continue;
+        const distance = hexDistance(hex, destination);
+        if (!best || distance < best.distance) best = { key, distance, steps };
+      }
+      const current = hexDistance(player.position, destination);
+      if (!best || best.distance >= current)
+        return deny(
+          direct !== undefined
+            ? "Another specialist is standing there."
+            : `No route closer. This commitment moves ${range} hexes.`,
+        );
+      moveSteps = best.steps;
+      moveTarget = best.key;
+    }
+  }
   const event: MissionActionEvent = {
     discovery,
     type: action,
     seat: view.seat,
-    target,
+    target: action === "move" ? moveTarget : target,
     amount,
     knowledgeCost: fallback && !reserveCost ? 1 : 0,
     reserveCost,
   };
   let effect: string;
   switch (action) {
-    case "move":
-      effect = `Move to ${target}.`;
+    case "move": {
+      const landing = parseHex(moveTarget)!;
+      const site = siteAt(landing, player.size);
+      const goal = siteAt(parseHex(target)!, player.size);
+      effect = `Move ${moveSteps} hex${moveSteps === 1 ? "" : "es"} to ${
+        site ? locationNames[site] : "open ground"
+      }${!site && goal ? `, heading for ${locationNames[goal]}` : ""}.`;
       break;
+    }
     case "engage":
       effect = `Remove ${Math.min(view.threat, amount)} gate threat.${discovery === "flank" ? " Includes +1 from the shared patrol weakness; this opening is spent." : ""}`;
       break;
@@ -779,8 +910,8 @@ export function previewAction(
   view: MissionView,
   command: MissionCommand,
 ): MissionPreview {
-  const { allowed, cost, effect, reason } = plan(view, command);
-  return { allowed, cost, effect, reason };
+  const { allowed, cost, effect, reason, range } = plan(view, command);
+  return { allowed, cost, effect, reason, range };
 }
 function append(state: MissionPublicState, text: string): void {
   state.log.push({ id: (state.log.at(-1)?.id ?? 0) + 1, text });
@@ -802,9 +933,14 @@ function reduceWorld(
   if (event.type !== "move" && event.type !== "assist")
     state.boosts[event.seat] = 0;
   switch (event.type) {
-    case "move":
-      player.location = event.target as MissionLocation;
+    case "move": {
+      const destination = parseHex(event.target);
+      if (destination) {
+        player.position = destination;
+        player.location = siteAt(destination, player.size);
+      }
       break;
+    }
     case "engage":
       state.threat = Math.max(0, state.threat - event.amount);
       break;
@@ -873,9 +1009,10 @@ export function applyCommand(
     e.pending = e.pending.filter((t) => !used.has(t.id));
     e.markers = e.markers.filter((m) => !used.has(m));
     if (seat === "systems" && used.size > 0) {
-      if (command.action !== "move")
+      if (command.action !== "move") {
         e.slots = e.slots.filter((slot) => slot !== "primed");
-      e.slots.push(command.action);
+        e.slots.push(command.action);
+      }
       if (command.action === "recover") e.slots.push("primed");
     }
     reduceWorld(next, validation.event);

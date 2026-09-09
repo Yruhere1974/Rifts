@@ -238,12 +238,16 @@ Possible action slots might include:
 
 ### Possible Character Fits
 
-- Juicer
+- Glitter Boy
 - Combat Cyborg
 - Mercenary
 - Soldier
 - Hunter
 - Powered-armour combat specialist
+
+The Glitter Boy is the prototype's dice class. See
+`docs/product/class-lineup.md`; the Juicer was previously listed here and now
+belongs to the bag / push-your-luck engine below.
 
 ### Personal Upgrades
 
@@ -359,6 +363,7 @@ The bag player draws tokens and decides how aggressively to continue pushing.
 
 ### Possible Character Fits
 
+- Juicer
 - Wilderness Scout
 - Rift Explorer
 - dimensional traveler
@@ -366,6 +371,10 @@ The bag player draws tokens and decides how aggressively to continue pushing.
 - scavenger
 - prospector
 - smuggler
+
+The Juicer is the prototype's push-your-luck class: a body driven past safe
+limits is the fantasy this engine already models. See
+`docs/product/class-lineup.md`.
 
 ### Example Conversion
 
@@ -610,6 +619,10 @@ Only one card-engine character would normally participate in a party.
 This preserves mechanical diversity.
 
 A future game might therefore have twenty characters built around five gameplay families.
+
+The four classes chosen for this prototype, and the three-layer separation of
+engine family, family name and class that keeps the setting swappable, are
+recorded in `docs/product/class-lineup.md`.
 
 ---
 

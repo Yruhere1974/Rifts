@@ -14,7 +14,7 @@ const engineRules: Record<
     example: string;
   }
 > = {
-  soldier: {
+  dice: {
     kit: "Five six-sided dice each round. Allocate one available die per engine action; committed dice are spent until the next round.",
     rules: [
       "A die showing 1-3 gives 1 effect; 4-6 gives 2 effect. The face is a threshold, not the amount of damage or progress.",
@@ -27,7 +27,7 @@ const engineRules: Record<
     example:
       "At the breach, a 4+ die gives 2 effect. With +2 support from an ally and the relay restored, Contribute gives (2 + 2) x 2 = 8 stabilization, costing that die and 1 shared Power. Safe timing must be known to avoid instability.",
   },
-  mage: {
+  cards: {
     kit: "Five cards each round: two Channel, two Resonance, and one Exploit Opening. Played cards leave your hand until the next round.",
     rules: [
       "Any single card gives 1 effect. One Channel plus one Resonance together gives 3 effect. No other two-card combination is valid; at most two cards can be committed.",
@@ -38,9 +38,9 @@ const engineRules: Record<
     cooperation:
       "Weave cards for a strong shared contribution, or preserve Exploit Opening to support another specialist after the relay is restored. Hold keeps that response available during the same team round.",
     example:
-      "Spend Exploit Opening to Assist Operator after the relay is restored: Operator stores +2 support and you lose that card. Operator's normal placement then contributes (1 + 2) x 2 = 6 stabilization at the breach, for 1 shared Power. If Operator primed before receiving your support, add another +1 before doubling. Recover after receiving support would spend that bonus on recovery instead.",
+      "Spend Exploit Opening to Assist Techno-Wizard after the relay is restored: Techno-Wizard stores +2 support and you lose that card. Techno-Wizard's normal placement then contributes (1 + 2) x 2 = 6 stabilization at the breach, for 1 shared Power. If Techno-Wizard primed before receiving your support, add another +1 before doubling. Recover after receiving support would spend that bonus on recovery instead.",
   },
-  scout: {
+  bag: {
     kit: "A fresh bag each round: six safe tokens and two hazards. Safe find, cache, and signal tokens each give 1 effect; their names do not restrict which action they can fund.",
     rules: [
       "Push to add a hidden token to your surge. A hazard destroys the whole surge and adds instability equal to the number of times you have burnt out this round: the first costs 1, the second 2, the third 3.",
@@ -54,7 +54,7 @@ const engineRules: Record<
     example:
       "Push three times without a hazard, then Contribute at the breach. With the relay restored that surge gives 6 stabilization for 1 shared Power. Pushing a fourth time to reach 8 risks the entire surge on odds the console shows you first.",
   },
-  operator: {
+  systems: {
     kit: "Four placement markers each round. Commit one marker per engine action. Every module accepts only one placement per round, even if you have markers left.",
     rules: [
       "Drive = Move; Strike = Engage; Scan = Investigate; Fabricate = Contribute; Uplink = Assist; Prime = Recover; Salvage = Acquire. A normal placement gives 1 effect.",
@@ -114,7 +114,10 @@ export function RulesReference({
           </select>
         </label>
         <section aria-label="Your engine">
-          <h3>{identity.engine}</h3>
+          <h3>
+            {identity.engine} / {identity.family}
+          </h3>
+          <p className="muted">{identity.flavour}</p>
           <p>{rules.kit}</p>
           <ul>
             {rules.rules.map((rule) => (
@@ -168,16 +171,16 @@ export function RulesReference({
             <dd>
               Restoring the relay costs an engine commitment and 2 shared Power,
               adds 1 instability, and doubles future breach output. Each breach
-              contribution costs 1 shared Power. Combine Vanguard's and
-              Wayfinder's breach readings, or Investigate, to establish safe
+              contribution costs 1 shared Power. Combine Glitter Boy's and Ley
+              Line Walker's breach readings, or Investigate, to establish safe
               timing; otherwise each breach contribution adds 5 instability.
               Sharing reveals your reading to the team and costs no piece.
             </dd>
             <dt>Shared discoveries</dt>
             <dd>
               Location assessments are private until deliberately shared.
-              Vanguard and Pathfinder together expose a gate weakness: the next
-              Engage there gains +1 effect. Pathfinder and Operator together
+              Glitter Boy and Juicer together expose a gate weakness: the next
+              Engage there gains +1 effect. Juicer and Techno-Wizard together
               locate an archive cache: the next Investigate there using engine
               pieces also recovers 2 Power. Both discoveries are one-use team
               opportunities; any specialist may spend their own capability to
@@ -196,11 +199,11 @@ export function RulesReference({
               Acquire turns engine effect into a chosen shared resource. Recover
               lowers instability by your effect. With no pieces selected, spend
               1 Materiel to Recover with 1 base effect, 1 Influence to Assist
-              for +1, or 1 Knowledge to Investigate unknown timing. Operator's
-              reserve-only actions do not occupy or prime modules. Recover adds
-              and consumes any received support, even when paid with Materiel
-              instead of pieces. Prime before receiving assistance if you want
-              to save that support for stabilization.
+              for +1, or 1 Knowledge to Investigate unknown timing.
+              Techno-Wizard's reserve-only actions do not occupy or prime
+              modules. Recover adds and consumes any received support, even when
+              paid with Materiel instead of pieces. Prime before receiving
+              assistance if you want to save that support for stabilization.
             </dd>
             <dt>Hold versus finish</dt>
             <dd>

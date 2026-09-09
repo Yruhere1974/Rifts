@@ -42,7 +42,7 @@ import { useModalFocus } from "./useModalFocus.js";
 import { Tutorial } from "./Tutorial.js";
 import { RulesReference } from "./RulesReference.js";
 
-const seats: Seat[] = ["soldier", "mage", "scout", "operator"];
+const seats: Seat[] = ["dice", "cards", "bag", "systems"];
 const locations = [
   {
     id: "gate",
@@ -104,12 +104,12 @@ export function App() {
   const [selected, setSelected] = useState("relay");
   const [pieces, setPieces] = useState<string[]>([]);
   const [action, setAction] = useState<Action>("contribute");
-  const [ally, setAlly] = useState<Seat>("operator");
+  const [ally, setAlly] = useState<Seat>("systems");
   const [resource, setResource] = useState("power");
   const [lobbyMode, setLobbyMode] = useState<"practice" | "team">(
     link ? "team" : "practice",
   );
-  const [lobbySeat, setLobbySeat] = useState<Seat>(link?.seat ?? "soldier");
+  const [lobbySeat, setLobbySeat] = useState<Seat>(link?.seat ?? "dice");
   const [invite, setInvite] = useState(link?.room ?? "");
   const [help, setHelp] = useState(false);
   const [artifact, setArtifact] = useState(false);
@@ -153,9 +153,9 @@ export function App() {
   const location =
     locations.find((item) => item.id === selected) ?? locations[1]!;
   const player = view?.players.find((item) => item.seat === seat);
-  // A surge is spent whole, so the Pathfinder never selects part of it.
+  // A surge is spent whole, so the Juicer never selects part of it.
   const committed =
-    seat === "scout" ? (view?.engine.pending.map((t) => t.id) ?? []) : pieces;
+    seat === "bag" ? (view?.engine.pending.map((t) => t.id) ?? []) : pieces;
   const command: MissionCommand = {
     type: "act",
     action,
@@ -184,7 +184,7 @@ export function App() {
     setPieces((current) =>
       current.includes(id)
         ? current.filter((p) => p !== id)
-        : seat === "soldier" || seat === "operator"
+        : seat === "dice" || seat === "systems"
           ? [id]
           : [...current, id],
     );
@@ -435,7 +435,7 @@ export function App() {
                     : "Share location assessment"}
                 </button>
                 {selected === "gate" &&
-                  hasReports(view, "gate", ["soldier", "scout"]) && (
+                  hasReports(view, "gate", ["dice", "bag"]) && (
                     <p className="discovery-note">
                       PATROL WEAKNESS /{" "}
                       {view.discoveries.flankUsed
@@ -444,7 +444,7 @@ export function App() {
                     </p>
                   )}
                 {selected === "archive" &&
-                  hasReports(view, "archive", ["scout", "operator"]) && (
+                  hasReports(view, "archive", ["bag", "systems"]) && (
                     <p className="discovery-note">
                       POWER CACHE /{" "}
                       {view.discoveries.cacheUsed
@@ -598,7 +598,9 @@ export function App() {
                 <id.icon size={22} />
                 <span>
                   <strong>{id.title}</strong>
-                  <small>{id.engine}</small>
+                  <small>
+                    {id.family} / {id.engine}
+                  </small>
                 </span>
                 <span className="crew-state">
                   {game.mode === "team" && !game.onlineSeats.includes(role)
@@ -988,7 +990,7 @@ export function App() {
                     setRulesOpen(false);
                     void game.connect(
                       lobbyMode,
-                      lobbyMode === "practice" ? "soldier" : lobbySeat,
+                      lobbyMode === "practice" ? "dice" : lobbySeat,
                       lobbyMode === "team"
                         ? invite.trim() || undefined
                         : undefined,

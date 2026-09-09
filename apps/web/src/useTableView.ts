@@ -48,7 +48,7 @@ export function useTableView(roomId: string | null): {
         // table role; it never claims one and never gates the round.
         const room = await client.joinById(roomId.trim(), {
           mode: "team",
-          seat: "soldier",
+          seat: "dice",
           clientKey: browserUuid(),
           role: "table",
         });

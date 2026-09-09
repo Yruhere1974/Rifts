@@ -3,6 +3,8 @@ import {
   scenarioSchema,
   playableMission,
   playableMissionSchema,
+  specialists,
+  specialistsSchema,
 } from "./index.js";
 
 const result = scenarioSchema.safeParse(prototypeScenario);
@@ -15,3 +17,7 @@ if (!result.success) {
 console.log(`Validated scenario: ${result.data.id}`);
 playableMissionSchema.parse(playableMission);
 console.log(`Validated playable mission: ${playableMission.id}`);
+specialistsSchema.parse(specialists);
+console.log(
+  `Validated specialists: ${specialists.map((s) => `${s.className} (${s.family})`).join(", ")}`,
+);

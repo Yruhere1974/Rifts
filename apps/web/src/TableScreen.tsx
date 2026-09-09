@@ -192,11 +192,11 @@ export function TableScreen({ roomId }: { roomId: string | null }) {
               const player = view?.players.find((entry) => entry.seat === seat);
               const identity = identities[seat];
               const pieces =
-                seat === "soldier"
+                seat === "dice"
                   ? `${kit?.dice ?? 0} dice`
-                  : seat === "mage"
+                  : seat === "cards"
                     ? `${kit?.hand ?? 0} cards`
-                    : seat === "scout"
+                    : seat === "bag"
                       ? `${kit?.surge ?? 0} surge / ${kit?.bagRemaining ?? 0} bag`
                       : `${kit?.markers ?? 0} markers`;
               return (

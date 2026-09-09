@@ -85,7 +85,7 @@ test("four engines complete a cooperative mission through the interface", async 
   ).toBeFocused();
   await donate(page);
   await nextLesson(page);
-  await seat(page, "Wayfinder");
+  await seat(page, "Ley Line Walker");
   await page.getByRole("button", { name: "Share reading with team" }).click();
   await expect(page.locator(".location-facts")).toContainText(
     "Safe frequency known",
@@ -96,7 +96,7 @@ test("four engines complete a cooperative mission through the interface", async 
     page.getByRole("button", { name: "Capability held" }),
   ).toBeVisible();
   await nextLesson(page);
-  await seat(page, "Operator");
+  await seat(page, "Techno-Wizard");
   await page.getByRole("button", { name: "The breach", exact: true }).click();
   await page.locator(".placement-marker").first().click();
   await commit(page, "Move");
@@ -105,20 +105,20 @@ test("four engines complete a cooperative mission through the interface", async 
   await expect(page.locator(".system-note")).toContainText("PRIMED");
   await page.getByRole("button", { name: "Request help" }).click();
   await expect(page.locator(".assist-request")).toContainText(
-    "Operator needs support",
+    "Techno-Wizard needs support",
   );
   await nextLesson(page);
-  await seat(page, "Wayfinder");
+  await seat(page, "Ley Line Walker");
   await page.getByRole("button", { name: "Exploit Opening card" }).click();
   await page.getByRole("button", { name: "Assist", exact: true }).click();
-  await page.getByLabel("Assistance recipient").selectOption("operator");
+  await page.getByLabel("Assistance recipient").selectOption("systems");
   await commit(page, "Assist");
   await expect(page.locator(".assist-request")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Exploit Opening card" }),
   ).toHaveCount(0);
   await nextLesson(page);
-  await seat(page, "Operator");
+  await seat(page, "Techno-Wizard");
   await page.locator(".placement-marker").first().click();
   await page.getByRole("button", { name: "Contribute", exact: true }).click();
   await expect(page.locator(".action-preview")).toContainText(
@@ -127,14 +127,14 @@ test("four engines complete a cooperative mission through the interface", async 
   await commit(page, "Contribute");
   await expect(page.locator(".objective-counter strong")).toContainText("8");
   await nextLesson(page);
-  await seat(page, "Pathfinder");
+  await seat(page, "Juicer");
   await push(page, 2);
   await nextLesson(page);
   await commit(page, "Move");
   await push(page, 1);
   await commit(page, "Contribute");
   await nextLesson(page);
-  await seat(page, "Wayfinder");
+  await seat(page, "Ley Line Walker");
   await donate(page);
   await page
     .getByRole("button", { name: "Channel card", exact: true })
@@ -151,14 +151,14 @@ test("four engines complete a cooperative mission through the interface", async 
     .click();
   await commit(page, "Contribute");
   await nextLesson(page);
-  await seat(page, "Pathfinder");
+  await seat(page, "Juicer");
   await donate(page);
-  await seat(page, "Operator");
+  await seat(page, "Techno-Wizard");
   await page.locator(".placement-marker").first().click();
   await page.getByRole("button", { name: "Assist", exact: true }).click();
-  await page.getByLabel("Assistance recipient").selectOption("soldier");
+  await page.getByLabel("Assistance recipient").selectOption("dice");
   await commit(page, "Assist");
-  await seat(page, "Vanguard");
+  await seat(page, "Glitter Boy");
   await page.getByRole("button", { name: "Die 1", exact: true }).click();
   await commit(page, "Move");
   await page.getByRole("button", { name: "Die 4", exact: true }).click();
@@ -239,7 +239,7 @@ test("tutorial highlights the expected specialist and Hold capability", async ({
   await expect(page.locator(".share-button")).toHaveClass(/tutorial-beacon/);
   for (let i = 0; i < 4; i++)
     await page.getByRole("button", { name: "Skip lesson" }).click();
-  const wayfinder = page.locator('[data-tutorial-seat="mage"]');
+  const wayfinder = page.locator('[data-tutorial-seat="cards"]');
   await expect(wayfinder).toHaveClass(/tutorial-beacon/);
   await page.getByRole("button", { name: "Show me where" }).click();
   await expect(wayfinder).toBeFocused();
@@ -285,10 +285,10 @@ test("specialist rule references explain each engine without changing seats", as
 }) => {
   await deploy(page);
   const clues = [
-    ["Vanguard", "Engage requires 4+"],
-    ["Wayfinder", "No other two-card combination is valid"],
-    ["Pathfinder", "spends your entire surge"],
-    ["Operator", "Every module accepts only one placement per round"],
+    ["Glitter Boy", "Engage requires 4+"],
+    ["Ley Line Walker", "No other two-card combination is valid"],
+    ["Juicer", "spends your entire surge"],
+    ["Techno-Wizard", "Every module accepts only one placement per round"],
   ];
   for (const [name, rule] of clues) {
     await seat(page, name!);
@@ -312,21 +312,23 @@ test("specialist rule references explain each engine without changing seats", as
     await expect(dialog).toHaveCount(0);
     await expect(trigger).toBeFocused();
   }
-  await seat(page, "Vanguard");
+  await seat(page, "Glitter Boy");
   const before = await page.locator(".event-ribbon p").textContent();
-  await page.getByRole("button", { name: "Vanguard rules reference" }).click();
-  await page.getByLabel("Specialist reference").selectOption("mage");
+  await page
+    .getByRole("button", { name: "Glitter Boy rules reference" })
+    .click();
+  await page.getByLabel("Specialist reference").selectOption("cards");
   await expect(
-    page.getByRole("heading", { name: "Wayfinder rules", exact: true }),
+    page.getByRole("heading", { name: "Ley Line Walker rules", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".engine-heading .eyebrow")).toContainText(
-    "Vanguard",
+    "Glitter Boy",
   );
   await expect(page.locator(".die")).toHaveCount(5);
   await expect(page.locator(".event-ribbon p")).toHaveText(before!);
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 844 });
-    await page.getByLabel("Specialist reference").selectOption("operator");
+    await page.getByLabel("Specialist reference").selectOption("systems");
     await expect(page.getByRole("dialog")).toBeVisible();
     expect(
       await page
@@ -349,7 +351,7 @@ test("specialist rule references explain each engine without changing seats", as
   await expect(summary).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("button", { name: "Vanguard rules reference" }),
+    page.getByRole("button", { name: "Glitter Boy rules reference" }),
   ).toBeFocused();
 });
 
@@ -364,7 +366,7 @@ test("private location perspectives combine into a paid team discovery", async (
     name: "Private location assessment",
   });
   const soldierText = await assessment.locator(".intel p").textContent();
-  await seat(page, "Pathfinder");
+  await seat(page, "Juicer");
   await expect(assessment.locator(".intel p")).not.toHaveText(soldierText!);
   const scoutText = await assessment.locator(".intel p").textContent();
   await expect(page.locator(".comms-feed")).not.toContainText(scoutText!);
@@ -373,7 +375,7 @@ test("private location perspectives combine into a paid team discovery", async (
     .click();
   await expect(page.locator(".comms-feed")).toContainText(scoutText!);
   await expect(page.locator(".discovery-note")).toHaveCount(0);
-  await seat(page, "Operator");
+  await seat(page, "Techno-Wizard");
   await expect(assessment).toContainText("two usable Power cells");
   await expect(assessment).not.toContainText(scoutText!);
   await assessment
@@ -382,7 +384,7 @@ test("private location perspectives combine into a paid team discovery", async (
   await expect(page.locator(".discovery-note")).toContainText(
     "+2 shared Power",
   );
-  await seat(page, "Wayfinder");
+  await seat(page, "Ley Line Walker");
   await page
     .getByRole("button", { name: "Channel card", exact: true })
     .first()
@@ -428,7 +430,12 @@ test("rounds, personal upgrades, and loss resolve without a turn lock", async ({
   await page.getByRole("button", { name: "Install personal upgrade" }).click();
   await expect(page.locator(".die")).toHaveCount(6);
   for (let round = 1; round <= 5; round++) {
-    for (const name of ["Vanguard", "Wayfinder", "Pathfinder", "Operator"]) {
+    for (const name of [
+      "Glitter Boy",
+      "Ley Line Walker",
+      "Juicer",
+      "Techno-Wizard",
+    ]) {
       await seat(page, name);
       await page
         .getByRole("button", { name: "Finish round", exact: true })
@@ -472,7 +479,12 @@ for (const viewport of [
       return colors.size;
     }, png.toString("base64"));
     expect(colors).toBeGreaterThan(20);
-    for (const name of ["Vanguard", "Wayfinder", "Pathfinder", "Operator"]) {
+    for (const name of [
+      "Glitter Boy",
+      "Ley Line Walker",
+      "Juicer",
+      "Techno-Wizard",
+    ]) {
       await seat(page, name);
       expect(
         await page.evaluate(

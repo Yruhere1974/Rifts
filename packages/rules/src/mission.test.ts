@@ -28,15 +28,15 @@ function piece(state: MissionState, seat: Seat): string {
 /** A Scout action commits the whole surge; other engines commit one piece. */
 function committed(state: MissionState, seat: Seat): string[] {
   const e = state.private[seat].engine;
-  return seat === "scout" ? e.pending.map((t) => t.id) : [piece(state, seat)];
+  return seat === "bag" ? e.pending.map((t) => t.id) : [piece(state, seat)];
 }
 /** Draws until the surge holds `count` tokens, absorbing any busts on the way. */
 function push(state: MissionState, count: number): MissionState {
   let s = state;
-  while (s.private.scout.engine.pending.length < count) {
-    if (s.private.scout.engine.bagRemaining === 0)
+  while (s.private.bag.engine.pending.length < count) {
+    if (s.private.bag.engine.bagRemaining === 0)
       throw new Error("Bag exhausted before the surge was built.");
-    s = act(s, "scout", { type: "draw" });
+    s = act(s, "bag", { type: "draw" });
   }
   return s;
 }
@@ -60,8 +60,8 @@ describe("Greyhaven mission", () => {
       expect(createMission(seed)).toEqual(createMission(seed));
       const a = createMission(seed);
       const original = structuredClone(a);
-      expect(act(a, "scout", { type: "draw" })).toEqual(
-        act(createMission(seed), "scout", { type: "draw" }),
+      expect(act(a, "bag", { type: "draw" })).toEqual(
+        act(createMission(seed), "bag", { type: "draw" }),
       );
       expect(a).toEqual(original);
     }
@@ -86,7 +86,7 @@ describe("Greyhaven mission", () => {
   });
   it("keeps the shared table screen free of every seat's private state", () => {
     let s = createMission();
-    s = act(s, "scout", { type: "draw" });
+    s = act(s, "bag", { type: "draw" });
     const wire = JSON.stringify(tableView(s));
     for (const seat of missionSeats) {
       const p = s.private[seat];
@@ -108,12 +108,12 @@ describe("Greyhaven mission", () => {
     expect(view).not.toHaveProperty("perceptions");
     // Counts and placements are table-visible; identities and values are not.
     const kit = (seat: Seat) => view.kits.find((k) => k.seat === seat)!;
-    expect(kit("soldier").dice).toBe(5);
-    expect(kit("mage").hand).toBe(5);
-    expect(kit("scout").bagHazards).toBe(2);
-    expect(kit("operator").markers).toBe(4);
-    expect(view.kits.find((k) => k.seat === "scout")?.surge).toBe(
-      s.private.scout.engine.pending.length,
+    expect(kit("dice").dice).toBe(5);
+    expect(kit("cards").hand).toBe(5);
+    expect(kit("bag").bagHazards).toBe(2);
+    expect(kit("systems").markers).toBe(4);
+    expect(view.kits.find((k) => k.seat === "bag")?.surge).toBe(
+      s.private.bag.engine.pending.length,
     );
     expect(view.progress).toBe(s.progress);
     view.resources.power = 99;
@@ -121,18 +121,18 @@ describe("Greyhaven mission", () => {
   });
   it("combines shared clues into safe timing without bypassing the shield", () => {
     let s = createMission();
-    s = act(s, "soldier", { type: "share" });
+    s = act(s, "dice", { type: "share" });
     expect(s.frequencyKnown).toBe(false);
-    s = act(s, "mage", { type: "share" });
+    s = act(s, "cards", { type: "share" });
     expect(s.frequencyKnown).toBe(true);
     expect(s.shield).toBe(true);
     expect(
-      playerView(s, "scout").intel.some((i) => i.status === "inferred"),
+      playerView(s, "bag").intel.some((i) => i.status === "inferred"),
     ).toBe(true);
   });
   it("keeps invalid and duplicate engine costs atomic", () => {
     const s = createMission();
-    const die = piece(s, "soldier");
+    const die = piece(s, "dice");
     for (const command of [
       { type: "act", action: "move", target: "rift", pieces: [die, die] },
       { type: "act", action: "contribute", target: "rift", pieces: [die] },
@@ -143,25 +143,25 @@ describe("Greyhaven mission", () => {
         pieces: ["other-seat-piece"],
       },
     ] satisfies MissionCommand[]) {
-      const result = applyCommand(s, "soldier", command);
+      const result = applyCommand(s, "dice", command);
       expect(result.error).not.toBeNull();
       expect(result.state).toBe(s);
     }
-    const moved = action(s, "soldier", "move", "rift", [die]);
+    const moved = action(s, "dice", "move", "rift", [die]);
     expect(
-      applyCommand(moved, "soldier", {
+      applyCommand(moved, "dice", {
         type: "act",
         action: "move",
         target: "relay",
         pieces: [die],
       }).state,
     ).toBe(moved);
-    const low = s.private.soldier.engine.dice.find((d) => d.value < 4)!;
+    const low = s.private.dice.engine.dice.find((d) => d.value < 4)!;
     expect(
-      previewAction(playerView(s, "soldier"), {
+      previewAction(playerView(s, "dice"), {
         type: "act",
         action: "assist",
-        target: "mage",
+        target: "cards",
         pieces: [low.id],
       }).allowed,
     ).toBe(low.value >= 3);
@@ -175,90 +175,90 @@ describe("Greyhaven mission", () => {
           expect(JSON.stringify(v)).not.toContain(reading.text);
       }
     }
-    s = act(s, "scout", { type: "share" });
-    s = act(s, "operator", { type: "share" });
+    s = act(s, "bag", { type: "share" });
+    s = act(s, "systems", { type: "share" });
     expect(s.frequencyKnown).toBe(false);
-    s = act(s, "soldier", { type: "share", target: "gate" });
+    s = act(s, "dice", { type: "share", target: "gate" });
     expect(s.frequencyKnown).toBe(false);
     expect(
-      playerView(s, "mage").reports.some(
-        (r) => r.location === "gate" && r.seat === "soldier",
+      playerView(s, "cards").reports.some(
+        (r) => r.location === "gate" && r.seat === "dice",
       ),
     ).toBe(true);
-    s = act(s, "soldier", { type: "share" });
-    s = act(s, "mage", { type: "share" });
+    s = act(s, "dice", { type: "share" });
+    s = act(s, "cards", { type: "share" });
     expect(s.frequencyKnown).toBe(true);
     expect(
-      applyCommand(s, "soldier", { type: "share", target: "gate" }).error,
+      applyCommand(s, "dice", { type: "share", target: "gate" }).error,
     ).not.toBeNull();
   });
   it("lets another engine exploit a shared weakness once, paying normal capability", () => {
     let s = createMission();
-    s = act(s, "soldier", { type: "share", target: "gate" });
-    s = action(s, "operator", "move", "gate");
+    s = act(s, "dice", { type: "share", target: "gate" });
+    s = action(s, "systems", "move", "gate");
     const command: MissionCommand = {
       type: "act",
       action: "engage",
       target: "gate",
-      pieces: [piece(s, "operator")],
+      pieces: [piece(s, "systems")],
     };
-    expect(previewAction(playerView(s, "operator"), command).effect).toContain(
+    expect(previewAction(playerView(s, "systems"), command).effect).toContain(
       "Remove 1",
     );
-    s = act(s, "scout", { type: "share", target: "gate" });
-    expect(previewAction(playerView(s, "operator"), command).effect).toContain(
+    s = act(s, "bag", { type: "share", target: "gate" });
+    expect(previewAction(playerView(s, "systems"), command).effect).toContain(
       "Remove 2",
     );
-    s = act(s, "operator", command);
+    s = act(s, "systems", command);
     expect(s.threat).toBe(1);
     expect(s.discoveries.flankUsed).toBe(true);
-    expect(s.private.operator.engine.markers).toHaveLength(2);
+    expect(s.private.systems.engine.markers).toHaveLength(2);
   });
   it("recovers a corroborated archive cache once, only with a paid engine investigation", () => {
     let s = createMission();
-    s = act(s, "scout", { type: "share", target: "archive" });
-    s = action(s, "mage", "move", "archive");
+    s = act(s, "bag", { type: "share", target: "archive" });
+    s = action(s, "cards", "move", "archive");
     const command: MissionCommand = {
       type: "act",
       action: "investigate",
       target: "archive",
-      pieces: [piece(s, "mage")],
+      pieces: [piece(s, "cards")],
     };
-    expect(previewAction(playerView(s, "mage"), command).effect).not.toContain(
+    expect(previewAction(playerView(s, "cards"), command).effect).not.toContain(
       "cache",
     );
-    s = act(s, "operator", { type: "share", target: "archive" });
-    expect(previewAction(playerView(s, "mage"), command).effect).toContain(
+    s = act(s, "systems", { type: "share", target: "archive" });
+    expect(previewAction(playerView(s, "cards"), command).effect).toContain(
       "+2 shared Power",
     );
-    const fallback = action(s, "mage", "investigate", "archive", []);
+    const fallback = action(s, "cards", "investigate", "archive", []);
     expect(fallback.discoveries.cacheUsed).toBe(false);
-    s = act(s, "mage", command);
+    s = act(s, "cards", command);
     expect(s.resources.power).toBe(4);
     expect(s.discoveries.cacheUsed).toBe(true);
-    s = action(s, "mage", "investigate", "archive");
+    s = action(s, "cards", "investigate", "archive");
     expect(s.resources.power).toBe(4);
   });
   it("makes card combos more efficient than singles and upgrades change output", () => {
     let s = createMission();
-    const hand = s.private.mage.engine.hand;
+    const hand = s.private.cards.engine.hand;
     const combo = [
       hand.find((c) => c.kind === "channel")!.id,
       hand.find((c) => c.kind === "spell")!.id,
     ];
-    const normal = action(s, "mage", "acquire", "power", combo);
+    const normal = action(s, "cards", "acquire", "power", combo);
     expect(normal.resources.power).toBe(5);
-    s = act(s, "mage", { type: "upgrade" });
-    const upgraded = action(s, "mage", "acquire", "power", combo);
+    s = act(s, "cards", { type: "upgrade" });
+    const upgraded = action(s, "cards", "acquire", "power", combo);
     expect(upgraded.resources.power).toBe(6);
-    expect(upgraded.private.mage.engine.hand).toHaveLength(3);
+    expect(upgraded.private.cards.engine.hand).toHaveLength(3);
   });
   it("spends a Scout surge whole and refuses to hold part of it back", () => {
     let s = push(createMission(), 2);
-    const surge = committed(s, "scout");
+    const surge = committed(s, "bag");
     expect(surge.length).toBe(2);
     expect(
-      previewAction(playerView(s, "scout"), {
+      previewAction(playerView(s, "bag"), {
         type: "act",
         action: "acquire",
         target: "power",
@@ -266,24 +266,24 @@ describe("Greyhaven mission", () => {
       }).reason,
     ).toContain("whole surge");
     const before = s.resources.power;
-    s = action(s, "scout", "acquire", "power");
+    s = action(s, "bag", "acquire", "power");
     expect(s.resources.power).toBe(before + 2);
-    expect(s.private.scout.engine.pending).toHaveLength(0);
+    expect(s.private.bag.engine.pending).toHaveLength(0);
   });
   it("returns a busting hazard to the bag so pushing only raises the odds", () => {
     let s = createMission();
-    while (s.private.scout.engine.stress === 0)
-      s = act(s, "scout", { type: "draw" });
-    expect(s.private.scout.engine.pending).toHaveLength(0);
+    while (s.private.bag.engine.stress === 0)
+      s = act(s, "bag", { type: "draw" });
+    expect(s.private.bag.engine.pending).toHaveLength(0);
     expect(s.instability).toBe(1);
     // The hazard is back in the bag: density rises rather than falling.
-    expect(s.private.scout.engine.bagHazards).toBe(2);
-    const before = s.private.scout.engine;
+    expect(s.private.bag.engine.bagHazards).toBe(2);
+    const before = s.private.bag.engine;
     expect(before.bagHazards / before.bagRemaining).toBeGreaterThan(2 / 8);
     // A second burnout costs more than the first.
-    while (s.private.scout.engine.stress === 1)
-      s = act(s, "scout", { type: "draw" });
-    expect(s.private.scout.engine.stress).toBe(2);
+    while (s.private.bag.engine.stress === 1)
+      s = act(s, "bag", { type: "draw" });
+    expect(s.private.bag.engine.stress).toBe(2);
     expect(s.instability).toBe(3);
     expect(s.log.some((e) => e.text.includes("pushed past the limit"))).toBe(
       true,
@@ -297,13 +297,13 @@ describe("Greyhaven mission", () => {
       expect(s.round).toBe(r);
       const e = s.private;
       seen.push([
-        e.soldier.engine.dice.length,
-        e.mage.engine.hand.length,
-        e.scout.engine.bagRemaining,
-        e.operator.engine.markers.length,
+        e.dice.engine.dice.length,
+        e.cards.engine.hand.length,
+        e.bag.engine.bagRemaining,
+        e.systems.engine.markers.length,
       ]);
       // Hazards never thin out as the bag grows; only the payout does.
-      expect(e.scout.engine.bagHazards).toBe(2);
+      expect(e.bag.engine.bagHazards).toBe(2);
       if (r < 5) s = round(s);
     }
     expect(seen).toEqual([
@@ -322,19 +322,19 @@ describe("Greyhaven mission", () => {
   });
   it("enforces occupied modules and preserves priming through movement", () => {
     let s = createMission();
-    s = action(s, "operator", "recover", "operator");
-    expect(s.private.operator.engine.slots).toContain("primed");
-    s = action(s, "operator", "move", "rift");
-    expect(s.private.operator.engine.slots).toContain("primed");
-    s = action(s, "operator", "acquire", "power");
+    s = action(s, "systems", "recover", "systems");
+    expect(s.private.systems.engine.slots).toContain("primed");
+    s = action(s, "systems", "move", "rift");
+    expect(s.private.systems.engine.slots).toContain("primed");
+    s = action(s, "systems", "acquire", "power");
     expect(s.resources.power).toBe(4);
-    expect(s.private.operator.engine.slots).not.toContain("primed");
+    expect(s.private.systems.engine.slots).not.toContain("primed");
     expect(
-      applyCommand(s, "operator", {
+      applyCommand(s, "systems", {
         type: "act",
         action: "acquire",
         target: "power",
-        pieces: [piece(s, "operator")],
+        pieces: [piece(s, "systems")],
       }).error,
     ).toContain("occupied");
   });
@@ -354,11 +354,11 @@ describe("Greyhaven mission", () => {
       expect(refreshed.players.find((p) => p.seat === seat)?.upgraded).toBe(
         true,
       );
-      if (seat === "soldier")
+      if (seat === "dice")
         expect(refreshed.private[seat].engine.dice).toHaveLength(6);
-      if (seat === "operator")
+      if (seat === "systems")
         expect(refreshed.private[seat].engine.markers).toHaveLength(5);
-      if (seat === "scout")
+      if (seat === "bag")
         expect(refreshed.private[seat].engine.bagHazards).toBe(1);
     }
   });
@@ -367,17 +367,17 @@ describe("Greyhaven mission", () => {
     for (const seat of missionSeats) s = act(s, seat, { type: "hold" });
     expect(s.round).toBe(1);
     expect(s.instability).toBe(0);
-    s = action(s, "soldier", "move", "gate");
+    s = action(s, "dice", "move", "gate");
     expect(s.players[0]?.holding).toBe(false);
     const next = round(s);
     expect(next.round).toBe(2);
     expect(next.instability).toBe(2);
-    expect(next.private.soldier.engine.dice).toHaveLength(5);
+    expect(next.private.dice.engine.dice).toHaveLength(5);
   });
   it("allows information sharing after finishing, but not spending", () => {
-    let s = act(createMission(), "mage", { type: "ready" });
-    s = act(s, "mage", { type: "share" });
-    expect(applyCommand(s, "mage", { type: "upgrade" }).error).not.toBeNull();
+    let s = act(createMission(), "cards", { type: "ready" });
+    s = act(s, "cards", { type: "share" });
+    expect(applyCommand(s, "cards", { type: "upgrade" }).error).not.toBeNull();
   });
   it("resolves defeat and rejects every post-resolution action", () => {
     let s = createMission();
@@ -389,76 +389,76 @@ describe("Greyhaven mission", () => {
   });
   it("keeps preview and effect consistent for a four-engine cooperative victory", () => {
     let s = createMission();
-    s = act(s, "soldier", { type: "share" });
-    s = act(s, "mage", { type: "share" });
-    s = act(s, "mage", { type: "hold" });
-    s = action(s, "soldier", "contribute", "relay");
+    s = act(s, "dice", { type: "share" });
+    s = act(s, "cards", { type: "share" });
+    s = act(s, "cards", { type: "hold" });
+    s = action(s, "dice", "contribute", "relay");
     expect(s.shield).toBe(false);
     expect(s.instability).toBe(1);
-    s = act(s, "soldier", { type: "donate" });
-    s = action(s, "operator", "move", "rift");
-    s = action(s, "operator", "recover", "operator");
-    s = act(s, "operator", { type: "request", target: "rift" });
-    const reaction = s.private.mage.engine.hand.find(
+    s = act(s, "dice", { type: "donate" });
+    s = action(s, "systems", "move", "rift");
+    s = action(s, "systems", "recover", "systems");
+    s = act(s, "systems", { type: "request", target: "rift" });
+    const reaction = s.private.cards.engine.hand.find(
       (c) => c.kind === "reaction",
     )!.id;
-    s = action(s, "mage", "assist", "operator", [reaction]);
-    expect(s.boosts.operator).toBe(2);
+    s = action(s, "cards", "assist", "systems", [reaction]);
+    expect(s.boosts.systems).toBe(2);
     expect(s.requests).toHaveLength(0);
-    expect(s.private.mage.engine.hand.some((c) => c.id === reaction)).toBe(
+    expect(s.private.cards.engine.hand.some((c) => c.id === reaction)).toBe(
       false,
     );
     const command: MissionCommand = {
       type: "act",
       action: "contribute",
       target: "rift",
-      pieces: [piece(s, "operator")],
+      pieces: [piece(s, "systems")],
     };
-    expect(previewAction(playerView(s, "operator"), command).effect).toContain(
+    expect(previewAction(playerView(s, "systems"), command).effect).toContain(
       "8 rift progress",
     );
-    s = act(s, "operator", command);
+    s = act(s, "systems", command);
     expect(s.progress).toBe(8);
-    expect(s.boosts.operator).toBe(0);
+    expect(s.boosts.systems).toBe(0);
     s = push(s, 1);
-    s = action(s, "scout", "move", "rift");
+    s = action(s, "bag", "move", "rift");
     s = push(s, 1);
-    s = action(s, "scout", "contribute", "rift");
+    s = action(s, "bag", "contribute", "rift");
     expect(s.phase).toBe("action");
     expect(s.progress).toBe(10);
     expect(s.resources.power).toBe(0);
-    expect(s.players.find((p) => p.seat === "scout")?.contribution).toBe(2);
-    s = act(s, "mage", { type: "donate" });
-    const moveCard = s.private.mage.engine.hand.find(
+    expect(s.players.find((p) => p.seat === "bag")?.contribution).toBe(2);
+    s = act(s, "cards", { type: "donate" });
+    const moveCard = s.private.cards.engine.hand.find(
       (c) => c.kind === "channel",
     )!.id;
-    s = action(s, "mage", "move", "rift", [moveCard]);
+    s = action(s, "cards", "move", "rift", [moveCard]);
     const combo = [
-      s.private.mage.engine.hand.find((c) => c.kind === "channel")!.id,
-      s.private.mage.engine.hand.find((c) => c.kind === "spell")!.id,
+      s.private.cards.engine.hand.find((c) => c.kind === "channel")!.id,
+      s.private.cards.engine.hand.find((c) => c.kind === "spell")!.id,
     ];
-    s = action(s, "mage", "contribute", "rift", combo);
+    s = action(s, "cards", "contribute", "rift", combo);
     expect(s.phase).toBe("action");
     expect(s.progress).toBe(16);
-    s = act(s, "scout", { type: "donate" });
-    s = action(s, "operator", "assist", "soldier");
-    s = action(s, "soldier", "move", "rift");
-    s = action(s, "soldier", "contribute", "rift");
-    s = action(s, "soldier", "contribute", "rift");
+    s = act(s, "bag", { type: "donate" });
+    s = action(s, "systems", "assist", "dice");
+    s = action(s, "dice", "move", "rift");
+    s = action(s, "dice", "contribute", "rift");
+    s = action(s, "dice", "contribute", "rift");
     expect(s.phase).toBe("won");
     expect(s.progress).toBe(24);
   });
   it("prevents indefinite recovery and the two-engine blind shortcut", () => {
     let s = createMission();
-    s = action(s, "operator", "contribute", "relay");
-    s = act(s, "mage", { type: "donate" });
-    s = action(s, "mage", "move", "rift", [
-      s.private.mage.engine.hand.find((c) => c.kind === "reaction")!.id,
+    s = action(s, "systems", "contribute", "relay");
+    s = act(s, "cards", { type: "donate" });
+    s = action(s, "cards", "move", "rift", [
+      s.private.cards.engine.hand.find((c) => c.kind === "reaction")!.id,
     ]);
     for (let i = 0; i < 2; i++)
-      s = action(s, "mage", "contribute", "rift", [
-        s.private.mage.engine.hand.find((c) => c.kind === "channel")!.id,
-        s.private.mage.engine.hand.find((c) => c.kind === "spell")!.id,
+      s = action(s, "cards", "contribute", "rift", [
+        s.private.cards.engine.hand.find((c) => c.kind === "channel")!.id,
+        s.private.cards.engine.hand.find((c) => c.kind === "spell")!.id,
       ]);
     expect(s.phase).toBe("action");
     expect(s.progress).toBe(12);
@@ -474,20 +474,20 @@ describe("Greyhaven mission", () => {
   });
   it("requires more than two specialists' first-round burst for the full objective", () => {
     let s = createMission();
-    s = action(s, "operator", "contribute", "relay");
-    s = action(s, "operator", "recover", "operator");
-    s = action(s, "operator", "assist", "mage");
-    s = action(s, "operator", "acquire", "influence");
-    s = act(s, "operator", { type: "donate" });
-    s = act(s, "mage", { type: "upgrade" });
-    s = action(s, "mage", "move", "rift", [
-      s.private.mage.engine.hand.find((c) => c.kind === "reaction")!.id,
+    s = action(s, "systems", "contribute", "relay");
+    s = action(s, "systems", "recover", "systems");
+    s = action(s, "systems", "assist", "cards");
+    s = action(s, "systems", "acquire", "influence");
+    s = act(s, "systems", { type: "donate" });
+    s = act(s, "cards", { type: "upgrade" });
+    s = action(s, "cards", "move", "rift", [
+      s.private.cards.engine.hand.find((c) => c.kind === "reaction")!.id,
     ]);
     for (let i = 0; i < 2; i++) {
-      if (i === 1) s = action(s, "operator", "assist", "mage", []);
-      s = action(s, "mage", "contribute", "rift", [
-        s.private.mage.engine.hand.find((c) => c.kind === "channel")!.id,
-        s.private.mage.engine.hand.find((c) => c.kind === "spell")!.id,
+      if (i === 1) s = action(s, "systems", "assist", "cards", []);
+      s = action(s, "cards", "contribute", "rift", [
+        s.private.cards.engine.hand.find((c) => c.kind === "channel")!.id,
+        s.private.cards.engine.hand.find((c) => c.kind === "spell")!.id,
       ]);
     }
     expect(s.progress).toBe(22);
@@ -498,14 +498,14 @@ describe("Greyhaven mission", () => {
     let s = createMission();
     s.instability = 3;
     s.resources.influence = 1;
-    s = action(s, "soldier", "recover", "soldier", []);
+    s = action(s, "dice", "recover", "dice", []);
     expect(s.resources.materiel).toBe(1);
     expect(s.instability).toBe(2);
-    s = action(s, "soldier", "assist", "mage", []);
+    s = action(s, "dice", "assist", "cards", []);
     expect(s.resources.influence).toBe(0);
-    expect(s.boosts.mage).toBe(1);
-    s = action(s, "soldier", "move", "archive");
-    s = action(s, "soldier", "investigate", "archive", []);
+    expect(s.boosts.cards).toBe(1);
+    s = action(s, "dice", "move", "archive");
+    s = action(s, "dice", "investigate", "archive", []);
     expect(s.frequencyKnown).toBe(true);
     expect(s.resources.knowledge).toBe(1);
   });

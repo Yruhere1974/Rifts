@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { MissionCommand } from "@rifts/rules";
 
-export const seatSchema = z.enum(["soldier", "mage", "scout", "operator"]);
+export const seatSchema = z.enum(["dice", "cards", "bag", "systems"]);
 export const joinOptionsSchema = z.object({
   mode: z.enum(["practice", "team"]),
   seat: seatSchema,

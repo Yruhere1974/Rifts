@@ -27,6 +27,7 @@ The first prototype should prove:
 - Stack ADR: `docs/architecture/adr-0001-web-app-stack.md`
 - Coding standards: `docs/standards/coding-standards.md`
 - Repo operating model: `RATCHETING.md`
+- Class lineup and engine mapping: `docs/product/class-lineup.md`
 - Executable mission details: `docs/product/playable-slice.md`
 - Visibility and lifecycle: `docs/architecture/adr-0002-prototype-visibility.md`
 - Critical and comparison reviews: `docs/playtests/prototype-review.md`
@@ -66,7 +67,7 @@ Player engine action -> universal game event -> shared world reducer
 
 Run an unscripted four-person playtest. Assess whether the engines feel different, whether requests and information sharing change decisions, whether personal upgrades are tempting, and whether anyone feels unnecessary. Preserve the tested mission while tuning from observations.
 
-Current mission constants: 24 stabilization, 12 instability loss, six-round deadline, 1 Power per rift contribution, relay costs 2 Power and doubles output, blind work adds 5 instability, Operator priming adds 1 output. These are authored prototype numbers, not a redesign of the concept constitution.
+Current mission constants: 24 stabilization, 12 instability loss, six-round deadline, 1 Power per rift contribution, relay costs 2 Power and doubles output, blind work adds 5 instability, Techno-Wizard priming adds 1 output. These are authored prototype numbers, not a redesign of the concept constitution.
 
 Verification covers 24 unit tests and eleven browser/network tests, including a four-browser victory, guided solo-table victory, tutorial pause/resume/reset and keyboard focus, solo loss, wire privacy, reserved-seat rejoining, shared-cost races, and desktop/mobile screenshot/canvas checks. The separate critical reviewer found no remaining concrete blocker after review fixes, including stricter lesson completion and tutorial focus restoration. The full repository check is the release gate; do not infer human enjoyment or final balance from automation.
 
@@ -75,6 +76,14 @@ Last local verification (2026-09-08, second pass): `npm run check` passed end to
 Adding a web dependency or changing `vite.config.ts` also needs the web dev server restarted, for the same reuse reason. A local game server started before a rules change keeps serving the old view shape, because `npm run dev -w @rifts/server` runs `tsx` without watch and Playwright reuses an existing server. Restart it after touching `packages/rules` or every browser test fails on a stale wire contract.
 
 ## In Flight
+
+- Engine families and classes are now separate layers, which the code had been conflating. `Seat` was simultaneously the engine family, the class and the table position; it is now `EngineFamily` from `@rifts/shared`, whose values are `dice`, `cards`, `bag` and `systems`. That type had been declared and imported by nothing since the first scaffold; it is now the seam it was meant to be. Classes are authored content in `packages/content/src/specialists.ts`, validated by Zod like every other content table: Glitter Boy, Ley Line Walker, Juicer and Techno-Wizard, each carrying a class name, a setting-neutral family name, colour, flavour and upgrade text. The web client's `identities` is now a projection of that content and supplies only an icon per family, so adding or swapping a class is a content edit rather than a code change. The rules package reads exactly one thing from it, the class name used for log lines, and reasons about nothing but the family.
+
+- The old "Operator" collision is resolved. It had been a seat id, an engine-family display name and a distinct Rifts class at the same time. The systems-placement family is now called Artificer and the class on that seat is the Techno-Wizard.
+
+- One caveat to correct next: mission flavour text still lives in `packages/rules/src/mission.ts`. The per-location `perceptions` block names specialists, so class names have entered the rules package. That is prose rather than engine logic, and no rule branches on it, but it belongs in `packages/content` alongside the other authored text. Moving it would leave the rules package entirely setting-free.
+
+- The class lineup, the three-layer separation and the per-class implementation state are recorded in `docs/product/class-lineup.md`. The concept document had listed the Juicer under the dice engine, which contradicted the push-your-luck engine we built around that fantasy; that entry is corrected and the Glitter Boy takes its place.
 
 - Per-tab seats and a shared table screen. The ownership key moved from `localStorage` to `sessionStorage`, so a seat belongs to a browser tab rather than a browser profile and four tabs on one machine can hold four specialists; a reload reclaims the seat, closing the tab releases it. `/?room=<code>&seat=<seat>` joins a seat directly, which is what the QR codes encode. `/?table=1&room=<code>` opens a shared screen that joins with `role: "table"`: it claims no seat, is refused commands and seat switches, is excluded from the four-player start gate and absent-seat forfeiture, and receives `tableView()` instead of `playerView()`. That projection uses the same explicit allowlist and carries only public state plus per-seat counts and occupied modules, which are table-visible anyway. Vite binds the LAN so a phone can reach the join links, and the screen warns when it is on a loopback host whose codes cannot work.
 

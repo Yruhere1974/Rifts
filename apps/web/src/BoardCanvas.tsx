@@ -308,12 +308,21 @@ export function BoardCanvas({
             .fill(site ? 0x22302c : 0x1e2725)
             .stroke({ color: site ? 0x33443d : 0x27332f, width: 1 });
         }
-        for (const [name, hex] of Object.entries(missionMap.sites)) {
-          const centre = hexToPixel(hex, HEX);
+        // Apparatus, not rooms: these are the things a unit has to stand
+        // beside, so they are what the board actually marks.
+        for (const object of missionMap.objects) {
+          const centre = hexToPixel(object.hex, HEX);
+          const colour = siteColors[object.site] ?? 0xffffff;
           terrain
             .poly(hexCorners(centre, HEX * 0.92))
-            .fill({ color: siteColors[name] ?? 0xffffff, alpha: 0.5 })
-            .stroke({ color: siteColors[name] ?? 0xffffff, width: 2 });
+            .fill({ color: colour, alpha: 0.55 })
+            .stroke({ color: colour, width: 2 });
+          // A ring showing the reach a standard unit needs to work on it.
+          for (const cell of hexesWithin(object.hex, 1))
+            if (openKeys.has(hexKey(cell)))
+              terrain
+                .poly(hexCorners(hexToPixel(cell, HEX), HEX * 0.92))
+                .stroke({ color: colour, width: 1, alpha: 0.4 });
         }
 
         const mapBounds = terrain.getLocalBounds();

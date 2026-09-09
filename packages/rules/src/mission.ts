@@ -306,14 +306,27 @@ const overlaps = (
   );
 
 /** The site a unit of this size standing here counts as being at. */
+/** Apparatus this unit is close enough to put its hands on. */
+export function objectsBeside(
+  anchor: Hex,
+  size: number,
+): (typeof missionMap.objects)[number][] {
+  return missionMap.objects.filter(
+    (object) => hexDistance(anchor, object.hex) <= size + 1,
+  );
+}
+
+/**
+ * The site a unit counts as working at. Being in the room is no longer enough:
+ * you have to be beside something. Nearest wins, because a large unit can
+ * reach apparatus belonging to two sites at once.
+ */
 export function siteAt(anchor: Hex, size: number): MissionLocation | null {
-  // Nearest, not first: a large unit's reach can overlap two site areas.
   let best: { site: MissionLocation; distance: number } | null = null;
-  for (const [name, hex] of Object.entries(missionMap.sites)) {
-    const distance = hexDistance(anchor, hex);
-    if (distance > size + missionMap.siteRadius) continue;
+  for (const object of objectsBeside(anchor, size)) {
+    const distance = hexDistance(anchor, object.hex);
     if (!best || distance < best.distance)
-      best = { site: name as MissionLocation, distance };
+      best = { site: object.site, distance };
   }
   return best?.site ?? null;
 }

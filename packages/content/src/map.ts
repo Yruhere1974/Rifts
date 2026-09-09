@@ -15,28 +15,96 @@ import {
  */
 const chambers: { centre: Hex; radius: number }[] = [
   { centre: { q: 0, r: 0 }, radius: 7 },
-  { centre: { q: 10, r: -3 }, radius: 4 },
-  { centre: { q: -12, r: 7 }, radius: 3 },
-  { centre: { q: -5, r: -6 }, radius: 3 },
+  { centre: { q: 17, r: -6 }, radius: 5 },
+  { centre: { q: -17, r: 10 }, radius: 4 },
+  { centre: { q: -8, r: -12 }, radius: 4 },
+  // Junctions carry no objective. They exist so the halls bend, so there is
+  // somewhere to be caught in the open, and so the map is crossed rather than
+  // simply traversed.
+  { centre: { q: 9, r: -3 }, radius: 3 },
+  { centre: { q: -9, r: 4 }, radius: 3 },
+  { centre: { q: -4, r: -6 }, radius: 3 },
 ];
 
 /** `width` is the clearance either side of the centre line, in hexes. */
 const passages: { from: Hex; to: Hex; width: number }[] = [
-  // Main hall: wide enough for a large unit's full footprint.
-  { from: { q: 0, r: 0 }, to: { q: 10, r: -3 }, width: 2 },
+  // Main hall to the breach, by way of a junction. Wide enough for anything.
+  { from: { q: 0, r: 0 }, to: { q: 9, r: -3 }, width: 2 },
+  { from: { q: 9, r: -3 }, to: { q: 17, r: -6 }, width: 2 },
   // The gate is the mission's only fight, so the weapons platform has to be
-  // able to reach it. Wide enough for a large unit, unlike the archive.
-  { from: { q: 0, r: 0 }, to: { q: -12, r: 7 }, width: 2 },
-  // Side passage: a standard unit fits, a large one does not.
-  { from: { q: 0, r: 0 }, to: { q: -5, r: -6 }, width: 1 },
+  // able to reach it.
+  { from: { q: 0, r: 0 }, to: { q: -9, r: 4 }, width: 2 },
+  { from: { q: -9, r: 4 }, to: { q: -17, r: 10 }, width: 2 },
+  // The archive keeps its narrow approach: a standard unit fits, a large one
+  // does not, so size still decides routes.
+  { from: { q: 0, r: 0 }, to: { q: -4, r: -6 }, width: 1 },
+  { from: { q: -4, r: -6 }, to: { q: -8, r: -12 }, width: 1 },
 ];
 
 export const siteHexes = {
   relay: { q: 0, r: 0 },
-  rift: { q: 10, r: -3 },
-  gate: { q: -12, r: 7 },
-  archive: { q: -5, r: -6 },
+  rift: { q: 17, r: -6 },
+  gate: { q: -17, r: 10 },
+  archive: { q: -8, r: -12 },
 } as const;
+
+/**
+ * The things on the map you actually act on. An objective is no longer a room
+ * you stand in: it is a piece of apparatus you have to be beside. Several per
+ * site means a team spreads out across a chamber instead of stacking on one
+ * hex, and it gives a bigger map something to be big around.
+ */
+export const siteObjects = [
+  {
+    id: "relay-north",
+    site: "relay",
+    name: "North conduit",
+    hex: { q: 3, r: -3 },
+  },
+  {
+    id: "relay-west",
+    site: "relay",
+    name: "West conduit",
+    hex: { q: -3, r: 0 },
+  },
+  {
+    id: "relay-south",
+    site: "relay",
+    name: "South conduit",
+    hex: { q: 0, r: 3 },
+  },
+  {
+    id: "rift-anchor",
+    site: "rift",
+    name: "Breach anchor",
+    hex: { q: 17, r: -6 },
+  },
+  { id: "rift-spar", site: "rift", name: "Torn spar", hex: { q: 19, r: -8 } },
+  {
+    id: "gate-barricade",
+    site: "gate",
+    name: "Barricade",
+    hex: { q: -17, r: 10 },
+  },
+  {
+    id: "gate-culvert",
+    site: "gate",
+    name: "West culvert",
+    hex: { q: -19, r: 12 },
+  },
+  {
+    id: "archive-hatch",
+    site: "archive",
+    name: "Storage hatch",
+    hex: { q: -8, r: -12 },
+  },
+  {
+    id: "archive-stack",
+    site: "archive",
+    name: "Collapsed stack",
+    hex: { q: -6, r: -13 },
+  },
+] as const;
 
 function buildOpenHexes(): string[] {
   const open = new Set<string>();
@@ -64,6 +132,17 @@ export const missionMapSchema = z
       archive: hexSchema,
       rift: hexSchema,
     }),
+    /** Apparatus you must be adjacent to in order to act on it. */
+    objects: z
+      .array(
+        z.strictObject({
+          id: z.string().min(1),
+          site: z.enum(["gate", "relay", "archive", "rift"]),
+          name: z.string().min(1),
+          hex: hexSchema,
+        }),
+      )
+      .min(1),
     /** Where each engine family's unit stands at deployment. */
     deploy: z.strictObject({
       dice: hexSchema,
@@ -101,11 +180,15 @@ export const missionMapSchema = z
           path: ["deploy", family],
           message: `${family} does not fit at its deployment hex.`,
         });
-      if (hexDistance(hex, map.sites.relay) > size + map.siteRadius)
+      const beside = map.objects.some(
+        (object) =>
+          object.site === "relay" && hexDistance(hex, object.hex) <= size + 1,
+      );
+      if (!beside)
         context.addIssue({
           code: "custom",
           path: ["deploy", family],
-          message: `${family} does not deploy at the relay.`,
+          message: `${family} does not deploy beside a relay conduit.`,
         });
       for (const other of placed)
         if (hexDistance(hex, other.hex) <= size + other.size)
@@ -133,6 +216,35 @@ export const missionMapSchema = z
         );
       }),
     );
+    for (const object of map.objects) {
+      if (!open.has(hexKey(object.hex))) {
+        context.addIssue({
+          code: "custom",
+          path: ["objects", object.id],
+          message: `${object.id} is not on an open hex.`,
+        });
+        continue;
+      }
+      const beside = hexesWithin(object.hex, 1 + map.sizes.standard).some(
+        (cell) =>
+          hexesWithin(cell, map.sizes.standard).every((part) =>
+            open.has(hexKey(part)),
+          ),
+      );
+      if (!beside)
+        context.addIssue({
+          code: "custom",
+          path: ["objects", object.id],
+          message: `Nothing can stand beside ${object.id}.`,
+        });
+    }
+    for (const site of Object.keys(map.sites))
+      if (!map.objects.some((object) => object.site === site))
+        context.addIssue({
+          code: "custom",
+          path: ["objects"],
+          message: `Site ${site} has nothing to act on.`,
+        });
     const start = hexKey(map.sites.relay);
     if (!anchors.has(start)) {
       context.addIssue({
@@ -167,13 +279,14 @@ export type MissionMapDefinition = z.infer<typeof missionMapSchema>;
 export const missionMap: MissionMapDefinition = missionMapSchema.parse({
   open: buildOpenHexes(),
   sites: siteHexes,
+  objects: siteObjects,
   deploy: {
-    dice: { q: 4, r: -2 },
-    cards: { q: -2, r: 0 },
-    bag: { q: -1, r: 3 },
-    systems: { q: -1, r: -3 },
+    dice: { q: 3, r: -1 },
+    cards: { q: -3, r: 1 },
+    bag: { q: -2, r: 4 },
+    systems: { q: 1, r: 4 },
   },
-  hexesPerEffect: 10,
+  hexesPerEffect: 14,
   siteRadius: 3,
   sizes: { small: 0, standard: 1, large: 2 },
 });

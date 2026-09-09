@@ -77,6 +77,16 @@ Adding a web dependency or changing `vite.config.ts` also needs the web dev serv
 
 ## In Flight
 
+- Bigger map and true adjacency, on `feature/hex-board`. The undercroft went from about 210 open hexes to 476: four objective chambers, three junctions that carry no objective so the halls bend and there is somewhere to be caught in the open, and sites pushed to 14-22 hexes apart. `hexesPerEffect` is 14, which keeps a leg at one strong commitment or two weak ones; at 10 the mission became unwinnable, which the goal-seeking driver caught.
+
+- An objective is no longer a room you stand in. `packages/content/src/map.ts` places apparatus — conduits, anchors, a barricade, a hatch — and `siteAt` now resolves by what a unit is beside rather than by a radius around a site hex. Several pieces per site means a team spreads across a chamber instead of stacking on one hex. Zod validates that every object sits on open floor, that something can stand beside it, that every site has at least one, and that the deployment anchors are each beside a relay conduit.
+
+- Consequence worth knowing: the team deploys beside the relay conduits rather than in the middle of the room, because the middle of a room is no longer a place anyone can work from. Selecting an objective in the UI selects its apparatus for the same reason.
+
+- The remaining lever on mission balance is still the constants, not the map. 24 progress, 12 instability and six rounds were tuned for a game with free movement; every increase in travel has been paid for by raising `hexesPerEffect` instead, which is a blunter instrument. That wants a human playtest.
+
+- Next: enemy units with positions, activating at the world response, replacing the abstract `threat` scalar. That is what Targeting and Bracing are ultimately aimed at.
+
 - Glitter Boy dice allocation, on `feature/hex-board`. The dice engine no longer spends one die per action. Dice are allocated to six platform systems and a system fires with everything in it: Drive powers Move, Targeting powers Engage, Stabilizer powers Contribute, Shield powers Recover. The Boom Gun doubles every die in it but cannot fire unbraced, and Bracing costs a die that buys no output of its own, so a heavy shot is three dice that cannot move, shield or stabilise. Six systems and five dice means the round is always a decision about what the machine is not doing. Assist, Acquire and Investigate stay pilot work: one loose die on the old thresholds.
 
 - Allocation is a free, reversible `allocate` command until the system fires, which keeps the decision on the table rather than behind a commit. The commitment set is derived from the facet in the client, mirroring how the push-your-luck surge is spent whole, so there is no partial-system commit to validate against.

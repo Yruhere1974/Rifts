@@ -29,6 +29,7 @@ import {
   previewAction,
   engineTier,
   facetForAction,
+  objectsBeside,
   reachable,
   siteAt,
   hasReports,
@@ -92,6 +93,11 @@ const actions: { id: Action; label: string; icon: typeof Zap }[] = [
   { id: "recover", label: "Recover", icon: Activity },
 ];
 
+/** The first piece of apparatus at a site, which is what selecting it means. */
+const apparatusOf = (site: string) =>
+  missionMap.objects.find((object) => object.site === site)?.hex ??
+  missionMap.sites.relay;
+
 const joinLink = (): { room: string; seat: Seat } | null => {
   const params = new URLSearchParams(window.location.search);
   const room = params.get("room");
@@ -105,8 +111,10 @@ export function App() {
   const game = useMission();
   const { view, seat } = game;
   const [link] = useState(joinLink);
-  const [selected, setSelected] = useState(hexKey(missionMap.sites.relay));
-  const selectedSite = siteAt(parseHex(selected) ?? missionMap.sites.relay, 0);
+  // Selecting an objective means selecting its apparatus: the middle of the
+  // room is no longer a place anyone can work from.
+  const [selected, setSelected] = useState(hexKey(apparatusOf("relay")));
+  const selectedSite = siteAt(parseHex(selected) ?? apparatusOf("relay"), 0);
   const [pieces, setPieces] = useState<string[]>([]);
   const [action, setAction] = useState<Action>("contribute");
   const [ally, setAlly] = useState<Seat>("systems");
@@ -204,6 +212,9 @@ export function App() {
     locations.find((item) => item.id === selectedSite) ?? locations[1]!;
   const player = view?.players.find((item) => item.seat === seat);
   // A surge is spent whole, so the Juicer never selects part of it.
+  // Being in the room is no longer enough; you have to be beside something.
+  const beside =
+    view && player ? objectsBeside(player.position, player.size) : [];
   const facet = facetForAction[action];
   const committed =
     seat === "bag"
@@ -415,15 +426,7 @@ export function App() {
                   <button
                     key={item.id}
                     className={`location-pin ${selectedSite === item.id ? "selected" : ""} ${item.id}`}
-                    onClick={() =>
-                      setSelected(
-                        hexKey(
-                          missionMap.sites[
-                            item.id as keyof typeof missionMap.sites
-                          ],
-                        ),
-                      )
-                    }
+                    onClick={() => setSelected(hexKey(apparatusOf(item.id)))}
                     aria-pressed={selectedSite === item.id}
                     aria-label={item.name}
                   >
@@ -479,6 +482,11 @@ export function App() {
                     : selectedSite === "archive"
                       ? "Investigate the records for Knowledge and safe breach timing. A known route through the noise."
                       : "An engine commitment and 2 shared Power restore the relay. Removing the shield doubles stabilization output."}
+              </p>
+              <p className="beside-line">
+                {beside.length
+                  ? `Beside ${beside.map((object) => object.name).join(", ")}.`
+                  : "Beside nothing. Move up to a piece of apparatus to work on it."}
               </p>
               <div className="location-facts">
                 <span>
@@ -1181,7 +1189,7 @@ export function App() {
                   className="primary-button"
                   disabled={game.status === "connecting"}
                   onClick={() => {
-                    setSelected(hexKey(missionMap.sites.relay));
+                    setSelected(hexKey(apparatusOf("relay")));
                     setPieces([]);
                     setAction("contribute");
                     setArtifact(false);

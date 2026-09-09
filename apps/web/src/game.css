@@ -2814,3 +2814,10 @@ select {
 .facet.inert .facet-output {
   color: #e4a680;
 }
+
+/* ---- Adjacency ---- */
+.beside-line {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #c3b98d;
+}

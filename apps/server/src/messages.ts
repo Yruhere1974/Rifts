@@ -28,6 +28,8 @@ export const commandSchema = z.discriminatedUnion("type", [
       .array(target)
       .max(32)
       .refine((pieces) => new Set(pieces).size === pieces.length),
+    // Systems only: which socket on the frame the placement builds into.
+    socket: z.number().int().min(0).max(31).optional(),
   }),
   z.strictObject({ type: z.literal("draw") }),
   z.strictObject({ type: z.literal("keep"), piece: target }),

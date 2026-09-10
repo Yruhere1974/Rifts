@@ -7,7 +7,7 @@ import {
   LocateFixed,
   Pause,
 } from "lucide-react";
-import { facetForAction } from "@rifts/rules";
+import { facetForAction, wiring } from "@rifts/rules";
 import type { MissionAction, MissionView, Seat } from "@rifts/rules";
 
 type Lesson = {
@@ -34,6 +34,8 @@ type Guidance = {
   staged: string[];
   action: MissionAction;
   recipient: Seat;
+  /** The socket a Techno-Wizard placement is aimed at, or null. */
+  socket: number | null;
   artifactOpen: boolean;
 };
 
@@ -72,6 +74,23 @@ function stage(
     return `.action-slots button[title="${
       want.action[0]!.toUpperCase() + want.action.slice(1)
     }"]`;
+  // A placement needs somewhere on the frame to go. Point at the empty socket
+  // that pays most, so a follower is taught to build a run rather than to
+  // scatter markers across the board.
+  if (view.seat === "systems" && want.action !== "move" && ui.socket === null) {
+    const sockets = view.engine.sockets;
+    let best = -1;
+    let score = -1;
+    sockets.forEach((held, index) => {
+      if (held) return;
+      const wired = wiring(sockets, index);
+      if (wired > score) {
+        score = wired;
+        best = index;
+      }
+    });
+    if (best >= 0) return `[data-socket="${best}"]`;
+  }
   return '[data-tutorial="commit"]';
 }
 
@@ -151,7 +170,7 @@ const lessons: Lesson[] = [
     instruction:
       "Switch to Techno-Wizard. Select The breach, place a marker on Move and commit. You will not arrive in one go: repeat until the inspector says You are here.",
     consequence:
-      "The board is a hex map and your engine's output buys distance, so a stronger commitment carries you further. Highlighted hexes show this move's reach, and heading for a distant objective takes you as far as it can. Move is the one placement that never occupies a module, so you can keep driving; every other module still accepts one placement per round.",
+      "The board is a hex map and your engine's output buys distance, so a stronger commitment carries you further. Highlighted hexes show this move's reach, and heading for a distant objective takes you as far as it can. Move is the one placement that seats nothing on the frame, so crossing the map never costs you the machine; every other placement takes one of your seven sockets, and which socket is yours to choose.",
     target: ".map-surface",
     complete: (v) =>
       v.players.find((p) => p.seat === "systems")?.location === "rift",
@@ -174,7 +193,7 @@ const lessons: Lesson[] = [
     instruction:
       "Still as Techno-Wizard at the breach, place a marker on Recover and commit. Then Request help.",
     consequence:
-      "Recover primes your next effect for +1. Each module other than Move accepts a single placement per round, and a placement is worth +1 more for each built module beside it in the row, so where you build matters as much as what you build. Your request appears in the team channel.",
+      "Recover primes your next effect for +1. Every placement but Move takes one of the frame's seven sockets, and is worth +1 more for each socket already built beside it, so where you build matters as much as what you build. Build toward the middle and the next placement has two neighbours to wire into. Your request appears in the team channel.",
     target: ".engine-section",
     complete: (v) =>
       v.log.some(
@@ -183,7 +202,7 @@ const lessons: Lesson[] = [
           entry.text.includes("prime next effect placement"),
       ) && logged(v, "Techno-Wizard requests help"),
     guide: (v, ui) =>
-      !v.engine.slots.includes("recover")
+      !v.engine.sockets.includes("recover")
         ? stage(v, ui, { action: "recover" })
         : '[data-tutorial="request"]',
   },

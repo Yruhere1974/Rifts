@@ -73,7 +73,14 @@ export type MissionCommand =
    * counts against next round's supply rather than adding to it.
    */
   | { type: "keep"; piece: string }
-  | { type: "act"; action: MissionAction; target: string; pieces: string[] }
+  | {
+      type: "act";
+      action: MissionAction;
+      target: string;
+      pieces: string[];
+      /** Systems only: which socket on the frame this placement builds into. */
+      socket?: number | undefined;
+    }
   | { type: "request"; target: string }
   | {
       type: "draw" | "hold" | "ready" | "upgrade" | "donate";
@@ -128,10 +135,16 @@ export type MissionEngine = {
   /** Hazards drawn this round. Never falls until the round refill. */
   stress: number;
   markers: string[];
-  /** Occupied modules; "primed" indicates enhanced next placement. */
-  slots: string[];
-  /** Modules left standing into the next round, at the cost of a marker. */
-  keptSlots: string[];
+  /**
+   * The machine as built: one entry per socket in a fixed row, holding the
+   * action wired into it or null. The player chooses the socket, so a
+   * contiguous run is something built rather than something stumbled into.
+   */
+  sockets: (MissionAction | null)[];
+  /** Sockets left standing into the next round, at the cost of a marker. */
+  keptSockets: number[];
+  /** The next non-Move placement is enhanced. */
+  primed: boolean;
 };
 /** A placed enemy. Everyone can see it: it is standing on the board. */
 export type MissionEnemy = {
@@ -185,7 +198,7 @@ export type MissionKitSummary = {
   bagRemaining: number;
   bagHazards: number;
   markers: number;
-  slots: string[];
+  sockets: (MissionAction | null)[];
 };
 /** Public projection for a spectating table screen. Carries no private state. */
 export type MissionTableView = MissionPublicState & {
@@ -462,26 +475,19 @@ export function surgeOutput(tokens: readonly { kind: string }[]): number {
  * beats scattering markers across the board.
  */
 export function wiring(
-  slots: readonly string[],
-  action: MissionAction,
+  sockets: readonly (MissionAction | null)[],
+  socket: number,
 ): number {
-  const index = moduleRow.indexOf(action);
-  if (index < 0) return 0;
-  return [moduleRow[index - 1], moduleRow[index + 1]].filter(
-    (neighbour) => neighbour && slots.includes(neighbour),
-  ).length;
+  if (socket < 0 || socket >= sockets.length) return 0;
+  return [sockets[socket - 1], sockets[socket + 1]].filter(Boolean).length;
 }
 
-/** The order modules are wired in, which is the order the console draws them. */
-export const moduleRow: readonly MissionAction[] = [
-  "move",
-  "engage",
-  "investigate",
-  "contribute",
-  "acquire",
-  "assist",
-  "recover",
-];
+/** How many sockets the frame carries. Always more than the markers to fill them. */
+export const socketCount = 7;
+
+/** An empty frame, which is what a rebuilt machine starts from. */
+export const emptySockets = (): (MissionAction | null)[] =>
+  Array.from({ length: socketCount }, () => null);
 
 /**
  * How well a system is calibrated. Matched faces lock it on and double its
@@ -516,6 +522,7 @@ export function combination(
   engine: MissionEngine,
   action: MissionAction,
   pieces: readonly string[],
+  socket: number,
 ): string | null {
   if (seat === "dice") {
     const facet = facetForAction[action];
@@ -537,7 +544,7 @@ export function combination(
       ? "Full spread."
       : null;
   }
-  const wired = wiring(engine.slots, action);
+  const wired = wiring(engine.sockets, socket);
   return wired ? `Wired to ${wired} module${wired === 1 ? "" : "s"}.` : null;
 }
 
@@ -653,8 +660,9 @@ function refill(state: MissionState, seat: Seat): void {
   // captured here because the engine is rebuilt from scratch just below.
   const carried = p.engine.hand;
   const dealt = p.engine.handSize > 0;
-  const keptSlots = p.engine.keptSlots.filter((slot) =>
-    p.engine.slots.includes(slot),
+  const builtSockets = p.engine.sockets;
+  const keptSockets = p.engine.keptSockets.filter(
+    (socket) => builtSockets[socket] != null,
   );
   p.engine = {
     dice: [],
@@ -668,8 +676,9 @@ function refill(state: MissionState, seat: Seat): void {
     bagHazards: 0,
     stress: 0,
     markers: [],
-    slots: [],
-    keptSlots: [],
+    sockets: emptySockets(),
+    keptSockets: [],
+    primed: false,
   };
   const tier = engineTier(state.round);
   const bonus = tier + (upgraded ? 1 : 0);
@@ -742,10 +751,16 @@ function refill(state: MissionState, seat: Seat): void {
     p.engine.stress = keptTokens.length;
   }
   if (seat === "systems") {
-    p.engine.slots = [...keptSlots];
-    p.engine.keptSlots = [...keptSlots];
+    // The frame is stripped and rebuilt every round except where the Wizard
+    // bolted something down. A held socket keeps what it holds, and costs one
+    // of the markers that would have filled it, so a machine that accumulates
+    // across rounds is paid for out of the rounds that build it.
+    p.engine.sockets = emptySockets().map((_, socket) =>
+      keptSockets.includes(socket) ? (builtSockets[socket] ?? null) : null,
+    );
+    p.engine.keptSockets = [...keptSockets];
     p.engine.markers = Array.from(
-      { length: Math.max(0, 4 + bonus - keptSlots.length) },
+      { length: Math.max(0, 4 + bonus - keptSockets.length) },
       (_, i) => `${prefix}-marker-${i}`,
     );
   }
@@ -764,8 +779,9 @@ export function createMission(seed = 1): MissionState {
       bagHazards: 0,
       stress: 0,
       markers: [],
-      slots: [],
-      keptSlots: [],
+      sockets: emptySockets(),
+      keptSockets: [],
+      primed: false,
     },
     bag: [],
     intel: [
@@ -861,7 +877,7 @@ export function tableView(state: MissionState): MissionTableView {
         bagRemaining: e.bagRemaining,
         bagHazards: e.bagHazards,
         markers: e.markers.length,
-        slots: e.slots,
+        sockets: e.sockets,
       };
     }),
   });
@@ -917,12 +933,16 @@ function commandValid(value: unknown): value is MissionCommand {
   const c = value as Record<string, unknown>;
   if (c.type === "act")
     return (
-      Object.keys(c).length === 4 &&
+      Object.keys(c).every((key) =>
+        ["type", "action", "target", "pieces", "socket"].includes(key),
+      ) &&
       typeof c.action === "string" &&
       actions.includes(c.action) &&
       typeof c.target === "string" &&
       Array.isArray(c.pieces) &&
-      c.pieces.every((p: unknown) => typeof p === "string")
+      c.pieces.every((p: unknown) => typeof p === "string") &&
+      (c.socket === undefined ||
+        (typeof c.socket === "number" && Number.isInteger(c.socket)))
     );
   if (c.type === "keep")
     return Object.keys(c).length === 2 && typeof c.piece === "string";
@@ -991,7 +1011,7 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
             : view.seat === "bag"
               ? e.pending.some((token) => token.id === command.piece)
               : view.seat === "systems"
-                ? e.slots.includes(command.piece)
+                ? e.sockets[Number(command.piece)] != null
                 : false;
         return view.seat === "cards"
           ? deny(
@@ -1085,6 +1105,7 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     }
   }
   const { action, target, pieces } = command;
+  const socket = command.socket ?? -1;
   if (new Set(pieces).size !== pieces.length)
     return deny("A piece cannot be spent twice.");
   if (action === "move") {
@@ -1199,9 +1220,16 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
   } else {
     if (pieces.length !== 1 || !e.markers.includes(pieces[0] ?? ""))
       return deny("Select one available placement marker.");
-    if (action !== "move" && e.slots.includes(action))
-      return deny("That action module is occupied until next round.");
-    amount = (e.slots.includes("primed") ? 2 : 1) + wiring(e.slots, action);
+    // Driving is not construction: it takes a marker but seats nothing, so
+    // the machine you are building survives crossing the map.
+    if (action === "move") amount = e.primed ? 2 : 1;
+    else {
+      if (socket < 0 || socket >= socketCount)
+        return deny("Choose a socket on the frame for this placement.");
+      if (e.sockets[socket] !== null)
+        return deny("That socket is filled until the frame is rebuilt.");
+      amount = (e.primed ? 2 : 1) + wiring(e.sockets, socket);
+    }
   }
   const enhanced = action !== "move" && action !== "assist";
   let discovery: MissionActionEvent["discovery"] = null;
@@ -1273,7 +1301,7 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     knowledgeCost: fallback && !reserveCost ? 1 : 0,
     reserveCost,
   };
-  const fit = combination(view.seat, e, action, pieces);
+  const fit = combination(view.seat, e, action, pieces, command.socket ?? -1);
   let effect: string;
   switch (action) {
     case "move": {
@@ -1505,10 +1533,11 @@ export function applyCommand(
     e.markers = e.markers.filter((m) => !used.has(m));
     if (seat === "systems" && used.size > 0) {
       if (command.action !== "move") {
-        e.slots = e.slots.filter((slot) => slot !== "primed");
-        e.slots.push(command.action);
+        e.primed = false;
+        const seat = command.socket ?? -1;
+        if (seat >= 0 && seat < socketCount) e.sockets[seat] = command.action;
       }
-      if (command.action === "recover") e.slots.push("primed");
+      if (command.action === "recover") e.primed = true;
     }
     reduceWorld(next, validation.event);
     player.holding = false;
@@ -1568,10 +1597,11 @@ export function applyCommand(
       case "keep": {
         const token = e.pending.find((entry) => entry.id === command.piece);
         if (token) token.kept = !token.kept;
-        if (e.slots.includes(command.piece))
-          e.keptSlots = e.keptSlots.includes(command.piece)
-            ? e.keptSlots.filter((slot) => slot !== command.piece)
-            : [...e.keptSlots, command.piece];
+        const socket = Number(command.piece);
+        if (e.sockets[socket] != null)
+          e.keptSockets = e.keptSockets.includes(socket)
+            ? e.keptSockets.filter((entry) => entry !== socket)
+            : [...e.keptSockets, socket];
         break;
       }
       case "allocate": {

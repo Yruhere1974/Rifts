@@ -114,11 +114,11 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     growth: [
       {
         at: 3,
-        gain: "A fifth placement marker: one more module in the run you are wiring together.",
+        gain: "A fifth placement marker: one more socket filled in the run you are wiring together.",
       },
       {
         at: 5,
-        gain: "A sixth marker. Modules still take one placement each, so this buys a longer connected machine.",
+        gain: "A sixth marker. The frame is still seven sockets, so this is a run reaching across it in one round.",
       },
     ],
     size: 1,
@@ -126,7 +126,7 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
       "An engineer who builds magic into machinery. Components are placed, connected, and made to feed one another.",
     colour: "#6ab7d8",
     upgrade:
-      "Gain a fifth placement marker immediately and each round. Occupied modules still limit placements.",
+      "Gain a fifth placement marker immediately and each round. The frame is still seven sockets.",
   },
 ]);
 

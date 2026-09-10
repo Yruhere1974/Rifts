@@ -80,7 +80,30 @@ function action(
     action: name,
     target,
     pieces: ready.pieces,
+    ...(seat === "systems" && name !== "move"
+      ? { socket: bestSocket(ready.state) }
+      : {}),
   });
+}
+
+/**
+ * Where a Techno-Wizard who is paying attention would build: the empty socket
+ * wired to the most of what already stands, and the leftmost of those so the
+ * frame grows as one run rather than in two halves.
+ */
+function bestSocket(state: MissionState): number {
+  const sockets = state.private.systems.engine.sockets;
+  let best = -1;
+  let score = -1;
+  sockets.forEach((held, index) => {
+    if (held) return;
+    const wired = wiring(sockets, index);
+    if (wired > score) {
+      score = wired;
+      best = index;
+    }
+  });
+  return best;
 }
 /**
  * The pieces a seat commits for an action, allocating first where the platform
@@ -394,6 +417,7 @@ describe("Greyhaven mission", () => {
       action: "engage",
       target: quarry,
       pieces: [piece(s, "systems")],
+      socket: bestSocket(s),
     };
     expect(previewAction(playerView(s, "systems"), command).effect).toContain(
       "for 1",
@@ -680,10 +704,14 @@ describe("Greyhaven mission", () => {
       surgeOutput([{ kind: "find" }, { kind: "cache" }, { kind: "signal" }]),
     ).toBe(6);
 
-    // A module wired to what is already built beside it is worth more.
-    expect(wiring([], "contribute")).toBe(0);
-    expect(wiring(["investigate"], "contribute")).toBe(1);
-    expect(wiring(["investigate", "acquire"], "contribute")).toBe(2);
+    // A socket wired to what is already built beside it is worth more.
+    const frame = (built: (MissionAction | null)[]) => built;
+    expect(wiring(frame([null, null, null]), 1)).toBe(0);
+    expect(wiring(frame(["investigate", null, null]), 1)).toBe(1);
+    expect(wiring(frame(["investigate", null, "acquire"]), 1)).toBe(2);
+    // The ends of the frame have one neighbour, so a run is cheapest to start
+    // in the middle and cheapest to extend from either edge of what stands.
+    expect(wiring(frame([null, "engage", null]), 0)).toBe(1);
   });
 
   it("names the combination each engine just read", () => {
@@ -724,6 +752,7 @@ describe("Greyhaven mission", () => {
         action: "assist",
         target: "dice",
         pieces: [systems.private.systems.engine.markers[0]!],
+        socket: bestSocket(systems),
       }).effect,
     ).toContain("Wired to 1 module.");
   });
@@ -761,12 +790,14 @@ describe("Greyhaven mission", () => {
     expect(nextBag.pending).toHaveLength(2);
     expect(nextBag.stress).toBe(2);
 
-    // A module left standing wires its neighbours but costs a marker.
+    // A socket bolted down stands into the next round and costs a marker.
     let systems = createMission();
     systems = action(systems, "systems", "recover", "systems");
-    systems = act(systems, "systems", { type: "keep", piece: "recover" });
+    const socket = systems.private.systems.engine.sockets.findIndex(Boolean);
+    expect(socket).toBeGreaterThanOrEqual(0);
+    systems = act(systems, "systems", { type: "keep", piece: `${socket}` });
     const nextSystems = round(systems).private.systems.engine;
-    expect(nextSystems.slots).toContain("recover");
+    expect(nextSystems.sockets[socket]).toBe("recover");
     expect(nextSystems.markers).toHaveLength(3);
   });
 
@@ -947,15 +978,22 @@ describe("Greyhaven mission", () => {
       ),
     ).toBe(true);
   });
-  it("enforces occupied modules and preserves priming through movement", () => {
+  it("enforces filled sockets and preserves priming through movement", () => {
     let s = createMission();
     s = action(s, "systems", "recover", "systems");
-    expect(s.private.systems.engine.slots).toContain("primed");
+    expect(s.private.systems.engine.primed).toBe(true);
     s = travel(s, "systems", "rift");
-    expect(s.private.systems.engine.slots).toContain("primed");
+    // Driving seats nothing, so crossing the map costs markers but never the
+    // machine or the priming already paid for.
+    expect(s.private.systems.engine.primed).toBe(true);
+    expect(s.private.systems.engine.sockets.filter(Boolean)).toHaveLength(1);
     s = action(s, "systems", "acquire", "power");
-    expect(s.resources.power).toBe(4);
-    expect(s.private.systems.engine.slots).not.toContain("primed");
+    // 2 for the priming, plus 1 for building next to the Prime already seated:
+    // a contiguous frame is worth more than the same markers scattered.
+    expect(s.resources.power).toBe(5);
+    expect(s.private.systems.engine.primed).toBe(false);
+    // A placement now needs somewhere to go, and a filled socket refuses it.
+    const filled = s.private.systems.engine.sockets.findIndex(Boolean);
     expect(
       applyCommand(s, "systems", {
         type: "act",
@@ -963,7 +1001,22 @@ describe("Greyhaven mission", () => {
         target: "power",
         pieces: [piece(s, "systems")],
       }).error,
-    ).toContain("occupied");
+    ).toContain("Choose a socket");
+    expect(
+      applyCommand(s, "systems", {
+        type: "act",
+        action: "acquire",
+        target: "power",
+        pieces: [piece(s, "systems")],
+        socket: filled,
+      }).error,
+    ).toContain("filled");
+    // The same action may be built twice in two sockets, though: what the
+    // frame rations is space, not repetition.
+    const twice = action(s, "systems", "acquire", "power");
+    expect(
+      twice.private.systems.engine.sockets.filter((held) => held === "acquire"),
+    ).toHaveLength(2);
   });
   it("gives each engine a permanent, exclusive personal-versus-team choice", () => {
     for (const seat of missionSeats) {

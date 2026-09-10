@@ -203,7 +203,7 @@ test("specialist rule references explain each engine without changing seats", as
     [
       "Techno-Wizard",
       "wired to what already stands beside it",
-      "Hold keeps a built module",
+      "A bolted socket keeps what it holds",
     ],
   ];
   for (const [name, rule, carry] of clues) {

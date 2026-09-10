@@ -120,7 +120,7 @@ export const playableMission = playableMissionSchema.parse({
       seat: "systems",
       name: "Techno-Wizard",
       engine:
-        "Place four markers in distinct action modules, gaining another at rounds 3 and 5. A placement gains +1 for each built module beside it in the row, Recover primes the next effect placement for +1, and held modules stand into the next round.",
+        "Place four markers into a frame of seven sockets, gaining another marker at rounds 3 and 5. Each placement chooses its action and its socket, and gains +1 for each built module already beside it, so a contiguous machine is built rather than stumbled into. Move fills no socket. Recover primes the next effect placement for +1, and bolted sockets stand into the next round.",
       upgrade: "An extra placement marker immediately and every round.",
     },
   ],

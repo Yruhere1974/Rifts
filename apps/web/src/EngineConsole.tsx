@@ -179,6 +179,10 @@ type PieceProps = {
 type EngineProps = {
   /** Hold a piece back so it survives the refill. */
   onKeep: (piece: string) => void;
+  /** Aim the next placement at a socket on the frame. */
+  onSocket: (index: number) => void;
+  /** The socket the next placement is aimed at. */
+  socket: number | null;
   view: MissionView;
   selected: string[];
   piece: (id: string) => PieceProps;
@@ -747,16 +751,6 @@ function BagEngine({ view, disabled, onDraw, onKeep }: EngineProps) {
   );
 }
 
-const moduleOrder = [
-  "move",
-  "engage",
-  "investigate",
-  "contribute",
-  "acquire",
-  "assist",
-  "recover",
-] as const;
-
 const moduleNames = {
   move: "Drive",
   engage: "Strike",
@@ -769,16 +763,18 @@ const moduleNames = {
 
 /**
  * Construction. Deterministic, and deliberately the quietest of the four: a
- * marker seats into its module with a snap and stays there. The one thing
- * worth animating is priming, this engine's only piece of sequencing, which
- * runs a current along the row toward the placement it will enhance.
+ * marker seats into a socket with a snap and stays there. What makes it a
+ * decision is that the socket is the Wizard's to choose — a placement is
+ * worth more beside what already stands, so the frame is a machine being
+ * built across rounds rather than a menu of actions.
  */
 function SystemsEngine({
   view,
   selected,
   piece,
   onSelect,
-  onAction,
+  onSocket,
+  socket,
   onKeep,
   disabled,
 }: EngineProps) {
@@ -786,18 +782,21 @@ function SystemsEngine({
   const markers = engine.markers;
   const arrivals = useArrivals(markers);
   const order = arrivalOrder(markers, arrivals);
-  const seated = useArrivals(engine.slots);
-  const primed = engine.slots.includes("primed");
+  const built = engine.sockets
+    .map((held, index) => (held ? `${index}` : ""))
+    .filter(Boolean);
+  const seated = useArrivals(built);
+  const primed = engine.primed;
   const prime = usePulse(primed);
-  // A placement is worth more wired to what is already built beside it, so
-  // the row shows what each empty module would pay before a marker is spent.
+  // What the best empty socket would pay, so the frame advertises the build
+  // before a marker is spent on it.
   const best = Math.max(
     0,
-    ...moduleOrder
-      .filter((slot) => !engine.slots.includes(slot))
-      .map((slot) => wiring(engine.slots, slot)),
+    ...engine.sockets.map((held, index) =>
+      held ? 0 : wiring(engine.sockets, index),
+    ),
   );
-  const kept = engine.keptSlots.length;
+  const kept = engine.keptSockets.length;
   return (
     <div className="systems-engine">
       <div className="marker-supply">
@@ -822,54 +821,61 @@ function SystemsEngine({
         )}
       </div>
       <div className={classes("system-modules", primed && "motion-current")}>
-        {moduleOrder.map((slot) => (
-          <button
-            key={slot}
-            className={classes(
-              "system-module",
-              engine.slots.includes(slot) && "occupied",
-              engine.keptSlots.includes(slot) && "held",
-              seated.has(slot) && "motion-seat",
-            )}
-            onClick={() =>
-              engine.slots.includes(slot) ? onKeep(slot) : onAction(slot)
-            }
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (engine.slots.includes(slot)) return;
-              const id = event.dataTransfer.getData("text/plain");
-              if (engine.markers.includes(id)) {
-                if (!selected.includes(id)) onSelect(id);
-                onAction(slot);
-              }
-            }}
-            aria-label={
-              engine.slots.includes(slot)
-                ? `${engine.keptSlots.includes(slot) ? "Release" : "Hold"} the ${slot} module`
-                : `${slot} module`
-            }
-            disabled={disabled}
-          >
-            <span>
-              {engine.slots.includes(slot) ? (
-                <Hexagon size={19} fill="currentColor" />
-              ) : (
-                <Plus size={19} />
+        {engine.sockets.map((held, index) => {
+          const wired = wiring(engine.sockets, index);
+          return (
+            <button
+              key={index}
+              data-socket={index}
+              className={classes(
+                "system-module",
+                Boolean(held) && "occupied",
+                engine.keptSockets.includes(index) && "held",
+                socket === index && !held && "targeted",
+                seated.has(`${index}`) && "motion-seat",
               )}
-            </span>
-            <strong>{moduleNames[slot]}</strong>
-            <em className="module-wire">
-              {engine.slots.includes(slot)
-                ? engine.keptSlots.includes(slot)
-                  ? "HELD"
-                  : "BUILT"
-                : wiring(engine.slots, slot)
-                  ? `+${wiring(engine.slots, slot)}`
-                  : ""}
-            </em>
-          </button>
-        ))}
+              // A built socket is a hold toggle; an empty one is where the
+              // next placement goes.
+              onClick={() => (held ? onKeep(`${index}`) : onSocket(index))}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (held) return;
+                const id = event.dataTransfer.getData("text/plain");
+                if (engine.markers.includes(id)) {
+                  if (!selected.includes(id)) onSelect(id);
+                  onSocket(index);
+                }
+              }}
+              aria-label={
+                held
+                  ? `${engine.keptSockets.includes(index) ? "Release" : "Bolt down"} the ${moduleNames[held]} in socket ${index + 1}`
+                  : `Empty socket ${index + 1}${wired ? `, wired to ${wired}` : ""}`
+              }
+              disabled={disabled}
+            >
+              <span>
+                {held ? (
+                  <Hexagon size={19} fill="currentColor" />
+                ) : (
+                  <Plus size={19} />
+                )}
+              </span>
+              <strong>
+                {held ? moduleNames[held] : `SOCKET ${index + 1}`}
+              </strong>
+              <em className="module-wire">
+                {held
+                  ? engine.keptSockets.includes(index)
+                    ? "BOLTED"
+                    : "BUILT"
+                  : wired
+                    ? `+${wired}`
+                    : ""}
+              </em>
+            </button>
+          );
+        })}
       </div>
       <small
         key={prime}
@@ -878,13 +884,14 @@ function SystemsEngine({
         {primed
           ? "PRIMED: next effect placement +1."
           : "Prime via Recover: next effect placement +1."}{" "}
-        One placement per module.{" "}
+        Choose the action, then the socket to build it into. Driving seats
+        nothing, so crossing the map never costs you the machine.{" "}
         {best > 0
-          ? `Building beside what stands is worth up to +${best}: a contiguous machine beats scattered markers.`
-          : "A placement is worth +1 for each built module beside it."}{" "}
+          ? `Building beside what stands is worth up to +${best}: a contiguous run beats a scattered frame.`
+          : "A placement is worth +1 for each built socket beside it."}{" "}
         {kept > 0
-          ? `${kept} module${kept === 1 ? "" : "s"} held past the rebuild, and counted against next round's markers.`
-          : "Click a built module to hold it past the rebuild."}
+          ? `${kept} socket${kept === 1 ? "" : "s"} bolted down, and counted against next round's markers.`
+          : "Click a built socket to bolt it down past the rebuild."}
       </small>
     </div>
   );
@@ -898,6 +905,8 @@ export function EngineConsole({
   onAction,
   onAllocate,
   onKeep,
+  onSocket,
+  socket,
 }: {
   view: MissionView;
   selected: string[];
@@ -906,6 +915,8 @@ export function EngineConsole({
   onAction: (action: MissionAction) => void;
   onAllocate: (die: string, facet: DieSlot) => void;
   onKeep: (piece: string) => void;
+  onSocket: (index: number) => void;
+  socket: number | null;
 }) {
   const disabled =
     view.phase !== "action" ||
@@ -928,6 +939,8 @@ export function EngineConsole({
     onAction,
     disabled,
     onKeep,
+    onSocket,
+    socket,
   };
   // One component per seat rather than one component with four branches: each
   // console holds motion state, and changing seat has to reset it rather than

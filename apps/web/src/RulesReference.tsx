@@ -68,19 +68,21 @@ const engineRules: Record<
       "Three pushes giving find, cache and signal is a full spread: 3 doubled to 6, where a find, a find and a cache would have been worth 3. Three finds would be clean, worth 3 + 3 = 6 as well. Pushing a fourth time for a bigger number risks the entire surge on odds the console shows you first, and can break the spread you already had.",
   },
   systems: {
-    kit: "Four placement markers each round. Commit one marker per engine action. Every module accepts only one placement per round, even if you have markers left.",
+    kit: "Four placement markers each round, and a frame of seven empty sockets. Commit one marker per engine action, and choose which socket it builds into.",
     rules: [
-      "The modules sit in a fixed row: Drive, Strike, Scan, Fabricate, Salvage, Uplink, Prime. They map to Move, Engage, Investigate, Contribute, Acquire, Assist and Recover in that order. A bare placement gives 1 effect.",
-      "A placement is wired to what already stands beside it: +1 for each built module directly adjacent in the row. Building a contiguous machine therefore beats scattering markers, and each empty module shows what it would pay before you spend on it.",
+      "A placement is three choices: which marker, which action, and which socket on the frame to build it into. A bare placement gives 1 effect. The built module takes the action's name — Drive, Strike, Scan, Fabricate, Salvage, Uplink, Prime — but it sits where you put it.",
+      "A placement is wired to what already stands beside it: +1 for each built module directly adjacent in the frame. Because the socket is yours to choose, a contiguous machine is something you construct rather than something you stumble into, and each empty socket shows what it would pay before you spend on it.",
+      "The same action can be built more than once, in different sockets. What the frame rations is space, not repetition.",
+      "Driving seats nothing. Move takes a marker but fills no socket, so crossing the map never costs you the machine you are building.",
       "Recover with a marker primes the next non-Move placement for +1 effect. Move preserves priming. Assist can use priming, but does not spend support received from an ally.",
-      "Hold keeps a built module standing through the rebuild, so its neighbours open next round already wired. It costs a marker from next round's supply and that module stays occupied, which is the price of starting with a machine rather than a bare row.",
+      "The frame is stripped and rebuilt every round except where you bolt something down. A bolted socket keeps what it holds, so its neighbours open next round already wired. It costs one of next round's markers and that socket stays filled, which is the price of starting with a machine rather than a bare frame.",
     ],
     growth:
-      "Field experience adds a fifth marker in round 3 and a sixth in round 5. The seven modules still accept one placement each per round, so extra markers buy the reach to build a longer connected run rather than repetition. Keeping your core adds one more.",
+      "Field experience adds a fifth marker in round 3 and a sixth in round 5. The frame still holds seven sockets, so extra markers are what let a run reach across it in a single round instead of two. Keeping your core adds one more.",
     cooperation:
-      "Build outward from what stands instead of jumping across the row, sequence Prime before Fabricate or Uplink, and request support before contributing. Placing on Fabricate at the relay uses the same module needed at the breach: another specialist can restore the relay so you keep Fabricate available.",
+      "Build outward from what stands instead of jumping across the frame, sequence Prime before Fabricate or Uplink, and request support before contributing. A frame with no room left is a round with no placements left, so tell the team when you are full.",
     example:
-      "Place on Scan, then Salvage, then Fabricate between them: the third placement is worth 1 + 2 wired = 3 before anything else. Prime first and it is 2 + 2 = 4, so with the relay restored that Contribute gives 8 stabilization for 1 shared Power. Hold Scan and Salvage over and next round's Fabricate opens at 3 again, bought with two of next round's markers.",
+      "Build Prime into socket 4, in the middle of the frame. Fabricate into socket 3 is then worth 2 for the priming plus 1 for the neighbour, and with the relay restored that Contribute gives 6 stabilization for 1 shared Power. Salvage into socket 5 is wired too. Bolt two of those down and next round opens with a run already standing, bought with two of next round's four markers.",
   },
 };
 

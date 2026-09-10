@@ -116,6 +116,8 @@ export function App() {
   const [selected, setSelected] = useState(hexKey(apparatusOf("relay")));
   const selectedSite = siteAt(parseHex(selected) ?? apparatusOf("relay"), 0);
   const [pieces, setPieces] = useState<string[]>([]);
+  // Which socket on the Techno-Wizard's frame the next placement builds into.
+  const [socket, setSocket] = useState<number | null>(null);
   const [action, setAction] = useState<Action>("contribute");
   const [ally, setAlly] = useState<Seat>("systems");
   const [foe, setFoe] = useState("");
@@ -251,6 +253,7 @@ export function App() {
                 ? selected
                 : (selectedSite ?? ""),
     pieces: committed,
+    ...(socket === null ? {} : { socket }),
   };
   const preview = view ? previewAction(view, command) : null;
   // Where this commitment could carry the unit. The compiler memoizes this;
@@ -281,7 +284,9 @@ export function App() {
     game.send(input);
     // Holding a piece back does not spend anything, so it must not tear down
     // the weave, surge or placement the player is part way through staging.
-    if (input.type !== "keep") setPieces([]);
+    if (input.type === "keep") return;
+    setPieces([]);
+    setSocket(null);
   };
   const changeSeat = (next: Seat) => {
     game.switchSeat(next);
@@ -383,6 +388,7 @@ export function App() {
             selected: selectedSite ?? "",
             pieces: committed,
             staged: pieces,
+            socket,
             action,
             recipient,
             artifactOpen: artifact,
@@ -816,6 +822,8 @@ export function App() {
                     send({ type: "allocate", die, facet })
                   }
                   onKeep={(piece) => send({ type: "keep", piece })}
+                  onSocket={setSocket}
+                  socket={socket}
                   onAction={setAction}
                 />
                 <section className="advancement" aria-label="Advancement">

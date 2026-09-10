@@ -88,6 +88,8 @@ test("authoritative rooms redact secrets, bind seats, and serialize shared costs
       action: "contribute",
       target: "relay",
       pieces: [operator.latest.view.engine.markers[0]!],
+      // A placement needs a socket on the frame to build into.
+      socket: 0,
     });
     await expect
       .poll(() => first.errors.length + operator.errors.length)

@@ -107,7 +107,7 @@ const lessons: Lesson[] = [
     instruction:
       "You are already standing in the relay chamber. Select a low die, put it in the Stabilizer system, choose Contribute, then commit.",
     consequence:
-      "The platform has six systems and five dice, so it can never run them all. Firing a system spends everything in it. The relay adds 1 instability now but doubles every later breach contribution, and a low die is enough for it: save the 4s and better for the Boom Gun, which doubles them.",
+      "The platform has six systems, five dice and three routings, so it can never run them all. Worse, routing surge to a system browns out every die still loose below it, so the order you route in decides how much of the roll survives. Route from the bottom when you want everything to fit; take the top first when one big shot is worth the rest. A low die is enough for the relay, which adds 1 instability now but doubles every later breach contribution.",
     target: ".engine-section",
     complete: (v) => !v.shield,
     guide: (v, ui) =>

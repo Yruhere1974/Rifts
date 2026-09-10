@@ -98,7 +98,7 @@ export const playableMission = playableMissionSchema.parse({
       seat: "dice",
       name: "Glitter Boy",
       engine:
-        "Allocate five dice across the platform's systems, gaining another at rounds 3 and 5. Firing a system spends everything in it: a 4+ die counts 2, matched faces double the system's output and a run of three or more adds its length. Held dice keep their faces into the next round.",
+        "Allocate five dice across the platform's systems, gaining another at rounds 3 and 5. The platform routes three times a round, and routing surge to a system browns out every die still loose below it, so the order decides how much of the roll is used at all. Firing a system spends everything in it: a 4+ die counts 2, matched faces double the output and a run of three or more adds its length. Held dice keep their faces into the next round.",
       upgrade: "An extra die immediately and every round.",
     },
     {

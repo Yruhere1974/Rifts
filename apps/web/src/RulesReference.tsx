@@ -17,19 +17,22 @@ const engineRules: Record<
   dice: {
     kit: "Five six-sided dice each round, and six systems on the platform to put them in. You will never fill all six, so every round is a decision about what the machine is not doing.",
     rules: [
-      "Allocate dice to systems, then fire a system. Drive powers Move, Targeting powers Engage, Stabilizer powers Contribute and Shield powers Recover. Allocation is free and reversible until the system fires.",
+      "Allocate dice to systems, then fire a system. Drive powers Move, Targeting powers Engage, Stabilizer powers Contribute and Shield powers Recover.",
       "A die in a system is worth 1, or 2 if it shows 4 or more. Firing spends everything in that system at once, so a heavily loaded system is one big commitment rather than several small ones.",
+      "The platform routes three times a round and holds five dice, so it can never power everything it is carrying. Which three, and in what order, is the round.",
+      "Routing surge to a system starves every die still loose in the tray below it: those dice brown out and are gone. Routing from the bottom up costs nothing and leaves your best dice unused; taking the top first browns out everything beneath it. The read is which dice to give up so the ones you need still fit.",
+      "Past the manifold a die is safe. Moving it between systems costs no routing, but surge does not flow backwards: a routed die never returns to the tray.",
       "A calibrated system does far more with the same dice. Matching faces lock it on and double its output; three or more consecutive faces spin it up and add the length of the run. Mismatched dice still fire, for what they are individually worth.",
       "Hold over keeps a die through the refill with its face intact. It does nothing for you this round, which is the price: you are buying a future combination with this round's capability, and a held die counts against your allotment rather than adding to it.",
       "The Boom Gun doubles every die in it, but it cannot fire unbraced: Bracing must hold a die, and that die is spent with the shot for no output of its own. Engaging fires Targeting, Boom Gun and Bracing together.",
       "Assist, Acquire and Investigate are pilot work, not platform work. Each takes a single die still loose in the tray, and Assist still needs a 3 or better.",
     ],
     growth:
-      "Field experience adds a sixth die in round 3 and a seventh in round 5. More dice mean more systems live at once and a better chance of assembling a set or a run, which is where the extra reach actually shows. Keeping your core adds one more on top.",
+      "Field experience adds a sixth die in round 3 and a seventh in round 5, and a fourth and fifth routing with them. More dice mean a better chance of assembling a set or a run, and more routings mean more of that roll survives to be used. Keeping your core adds one more of each.",
     cooperation:
       "A loaded Boom Gun is three dice that cannot move you, shield you or stabilise the breach. That is the trade the rest of the team is relying on you to make: hold the hall and hit hard, or stay mobile and contribute steadily.",
     example:
-      "Two dice into Drive carries you to the gate. A 5 into Targeting, a 6 into the Boom Gun and any die into Bracing takes 2 + (2 x 2) = 6 off a patrol in one shot, and empties the tray. Two matching 5s in Targeting would have doubled that half of it instead. Leaving the Boom Gun loaded but unbraced wastes it entirely, which the panel says before you commit.",
+      "Holding 1, 2, 4, 5, 6 with three routings: route the 1, 2 and 4 and nothing vents, but the system is worth 4 and your best dice never move. Route the 6 first and it browns out the other four, leaving one die worth 2. Route the 4 instead, giving up the 1 and 2, and the 5 and 6 still fit: 4, 5, 6 is a run worth 9. Giving up the bottom to make room for the top is the whole engine.",
   },
   cards: {
     kit: "Five cards each round: two Channel, two Resonance, and one Exploit Opening. Played cards leave your hand until the next round.",

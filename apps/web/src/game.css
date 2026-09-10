@@ -2852,6 +2852,43 @@ select {
   transform: translate(calc(-100% - 12px), -50%);
 }
 
+/* ---- Routing and brownout ---- */
+/* Venting is the platform's cost, so it is drawn as loss of power rather than
+   as an error: the doomed dice dim and desaturate in place, and what has
+   already gone is kept on screen as a receipt rather than disappearing. */
+.die.doomed {
+  opacity: 0.38;
+  filter: grayscale(0.8);
+  border-color: #7c5a4a;
+}
+.vent-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: #b0836c;
+}
+.vent-strip i {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 4px;
+  border: 1px dashed #7c5a4a;
+  font-style: normal;
+  font-size: 10px;
+  color: #c9a08a;
+}
+.allocate-hint.costly {
+  color: #dbac85;
+}
+.facet-die.picked {
+  outline: 2px solid #e0cb84;
+  outline-offset: 2px;
+}
+
 /* ---- Calibration and hold ---- */
 .facet.tuned {
   border-color: #e3d797;

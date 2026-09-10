@@ -19,6 +19,7 @@ import {
 import {
   coherence,
   surgeOutput,
+  ventedBy,
   weaveOutput,
   weaves,
   wiring,
@@ -195,6 +196,7 @@ function Die({
   arriving,
   reduced,
   selected,
+  doomed,
   piece,
 }: {
   value: number;
@@ -202,6 +204,8 @@ function Die({
   arriving: boolean;
   reduced: boolean;
   selected: boolean;
+  /** Would vent if the die currently held were routed. */
+  doomed: boolean;
   piece: PieceProps;
 }) {
   const [tumbling, setTumbling] = useState(arriving && !reduced);
@@ -232,10 +236,11 @@ function Die({
   return (
     <button
       {...piece}
-      aria-label={`Die ${value}`}
+      aria-label={`Die ${value}${doomed ? ", would vent" : ""}`}
       className={classes(
         "die",
         selected && "selected",
+        doomed && "doomed",
         // Steady, never pulsing: the tray should read at a glance, not blink.
         shown >= 4 && "can-engage",
         arriving && "motion-arrive",
@@ -279,6 +284,7 @@ function DiceEngine({
   view,
   selected,
   piece,
+  onSelect,
   onAllocate,
 }: EngineProps & { onAllocate: (die: string, facet: DieSlot) => void }) {
   const dice = view.engine.dice;
@@ -288,7 +294,19 @@ function DiceEngine({
   const order = arrivalOrder(ids, arrivals);
   const spend = useDeparture(dice.length);
   const loose = dice.filter((die) => die.facet === null);
-  const held = selected.find((id) => loose.some((die) => die.id === id));
+  const engine = view.engine;
+  const spare = engine.capacity - engine.routings;
+  // The selected die, whether it is still loose or already past the manifold:
+  // a routed die can be moved between systems for nothing.
+  const held = selected.find((id) => dice.some((die) => die.id === id));
+  const staged = dice.find((die) => die.id === held);
+  // What routing the staged die would cost the rest of the platform. Shown
+  // before the click, because the whole decision is which dice you give up.
+  const doomed = new Set(
+    staged && staged.facet === null && spare > 0
+      ? ventedBy(dice, staged).map((die) => die.id)
+      : [],
+  );
   const braced = dice.some((die) => die.facet === "bracing");
   return (
     <div className="dice-engine">
@@ -301,24 +319,44 @@ function DiceEngine({
             arriving={arrivals.has(die.id)}
             reduced={reduced}
             selected={selected.includes(die.id)}
+            doomed={doomed.has(die.id)}
             piece={piece(die.id)}
           />
         ))}
         {!loose.length && (
           <p className="empty-engine">
-            {dice.length
-              ? "Every die is committed to a system."
-              : "All dice spent."}
+            {!dice.length
+              ? "All dice spent."
+              : engine.vented.length
+                ? "The tray is empty: what was not routed browned out."
+                : "Every die is committed to a system."}
           </p>
         )}
         {spend > 0 && !reduced && (
           <span key={spend} className="tray-spend" aria-hidden="true" />
         )}
       </div>
-      <p className="allocate-hint">
-        {held
-          ? "Choose a system for that die."
-          : "Select a die, then a system. Firing a system spends everything in it."}
+      {engine.vented.length > 0 && (
+        <div className="vent-strip" aria-label="Browned-out dice">
+          <span>BROWNED OUT</span>
+          {engine.vented.map((die) => (
+            <i key={die.id}>{die.value}</i>
+          ))}
+        </div>
+      )}
+      <p
+        className={classes("allocate-hint", doomed.size > 0 && "costly")}
+        role="status"
+      >
+        {spare <= 0
+          ? "No routings left. Fire what is loaded, or move a die between systems."
+          : staged && staged.facet !== null
+            ? "Already past the manifold. Choose another system; rerouting costs no capacity."
+            : doomed.size > 0
+              ? `Routing that die browns out ${doomed.size} lower ${doomed.size === 1 ? "die" : "dice"}. Choose a system, or route from the bottom first.`
+              : held
+                ? "Choose a system for that die. Nothing lower is loose, so nothing vents."
+                : `${spare} of ${engine.capacity} routings left. Surge sent to one system starves every loose die below it.`}
       </p>
       <div className="facet-board">
         {facetPanel.map((entry) => {
@@ -336,7 +374,12 @@ function DiceEngine({
               className={`facet${inside.length ? " loaded" : ""}${inert ? " inert" : ""}${fit ? " tuned" : ""}${entry.facet === "locked" ? " keep" : ""}`}
               data-facet={entry.facet}
               aria-label={`${entry.name} system`}
-              disabled={!held}
+              // A routed die reroutes for nothing; a loose one needs capacity.
+              disabled={
+                !held ||
+                staged?.facet === entry.facet ||
+                (staged?.facet === null && spare <= 0)
+              }
               onClick={() => held && onAllocate(held, entry.facet)}
             >
               <span className="facet-head">
@@ -347,18 +390,21 @@ function DiceEngine({
                 {inside.map((die) => (
                   <i
                     key={die.id}
-                    className="facet-die"
+                    className={classes(
+                      "facet-die",
+                      selected.includes(die.id) && "picked",
+                    )}
                     role="button"
                     tabIndex={0}
-                    aria-label={`Return die ${die.value} to the tray`}
+                    aria-label={`Reroute die ${die.value}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      onAllocate(die.id, null);
+                      onSelect(die.id);
                     }}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.stopPropagation();
-                      onAllocate(die.id, null);
+                      onSelect(die.id);
                     }}
                   >
                     {die.value}

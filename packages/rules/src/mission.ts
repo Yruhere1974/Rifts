@@ -114,6 +114,12 @@ export type MissionToken = { id: string; kind: string; kept?: boolean };
 export type MissionEngine = {
   /** `facet` is null while a die is still loose in the tray. */
   dice: { id: string; value: number; facet: DieSlot }[];
+  /** Dice browned out by a routing this round, kept so the cost stays visible. */
+  vented: { id: string; value: number }[];
+  /** Routings spent: dice moved out of the tray and into a system. */
+  routings: number;
+  /** Routings the platform can make this round. Always fewer than its dice. */
+  capacity: number;
   hand: MissionCard[];
   /** Safe tokens from the current push. A hazard clears them; it never joins. */
   pending: MissionToken[];
@@ -535,6 +541,28 @@ export function combination(
   return wired ? `Wired to ${wired} module${wired === 1 ? "" : "s"}.` : null;
 }
 
+/**
+ * Which loose dice a routing would brown out. Sending surge to one system
+ * starves everything the platform is holding below it, so committing a high
+ * die early costs the low dice that would have crewed the rest of the
+ * platform. Dice already in a system are past the manifold and safe.
+ */
+export function ventedBy(
+  dice: readonly { id: string; value: number; facet: DieSlot }[],
+  die: { id: string; value: number },
+): { id: string; value: number }[] {
+  return dice
+    .filter((d) => d.facet === null && d.id !== die.id && d.value < die.value)
+    .map((d) => ({ id: d.id, value: d.value }));
+}
+
+/**
+ * How many routings a platform holding this many dice can make. Fewer than
+ * it has dice, always: routing ascending would otherwise brown nothing out
+ * and the order would stop mattering, which is the whole decision.
+ */
+export const routingCapacity = (dice: number): number => Math.max(1, dice - 2);
+
 /** A system's total: what its dice are worth, then how well they fit together. */
 export const systemOutput = (dice: readonly { value: number }[]): number =>
   coherence(dice).apply(diceOutput(dice));
@@ -619,6 +647,9 @@ function refill(state: MissionState, seat: Seat): void {
   );
   p.engine = {
     dice: [],
+    vented: [],
+    routings: 0,
+    capacity: 0,
     hand: [],
     pending: [],
     bagRemaining: 0,
@@ -642,6 +673,8 @@ function refill(state: MissionState, seat: Seat): void {
         }),
       ),
     ];
+  if (seat === "dice")
+    p.engine.capacity = routingCapacity(p.engine.dice.length);
   if (seat === "cards") {
     const fresh = [
       "channel",
@@ -699,6 +732,9 @@ export function createMission(seed = 1): MissionState {
   const empty = (seat: Seat): MissionPrivateState => ({
     engine: {
       dice: [],
+      vented: [],
+      routings: 0,
+      capacity: 0,
       hand: [],
       pending: [],
       bagRemaining: 0,
@@ -941,19 +977,40 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
               "Hold it back from this round so it survives the refill. What you keep counts against next round's supply rather than adding to it.",
             );
       }
-      case "allocate":
-        return view.seat !== "dice"
-          ? deny("Only the dice platform allocates.")
-          : !e.dice.some((die) => die.id === command.die)
-            ? deny("That die is not in your tray.")
-            : allow(
-                "None",
-                command.facet === "locked"
-                  ? "Lock that die: it does nothing this round and keeps its face through the refill. You are buying a future combination with this round's capability."
-                  : command.facet
-                    ? `Commit that die to ${command.facet}. Allocation is free; the dice are spent when the system fires.`
-                    : "Return that die to the tray.",
-              );
+      case "allocate": {
+        if (view.seat !== "dice")
+          return deny("Only the dice platform allocates.");
+        const die = e.dice.find((entry) => entry.id === command.die);
+        if (!die) return deny("That die is not on your platform.");
+        if (command.facet === null)
+          return deny(
+            "Surge does not flow backwards. Move that die to another system instead.",
+          );
+        // Moving a die between systems is free: the routing was paid when it
+        // left the tray. Only the tray to a system spends capacity.
+        if (die.facet !== null)
+          return allow(
+            "None",
+            `Reroute that die to ${command.facet}. It is already past the manifold, so this costs no routing.`,
+          );
+        if (e.routings >= e.capacity)
+          return deny(
+            `The platform routes ${e.capacity} time${e.capacity === 1 ? "" : "s"} a round, and all of them are spent.`,
+          );
+        const browned = ventedBy(e.dice, die);
+        const loss = browned.length
+          ? ` Brownout: the ${browned
+              .map((d) => d.value)
+              .sort((a, b) => b - a)
+              .join(", the ")} vent.`
+          : " Nothing lower is left loose, so nothing vents.";
+        return allow(
+          `1 of ${e.capacity - e.routings} routings left`,
+          command.facet === "locked"
+            ? `Park that die: it does nothing this round and keeps its face through the refill.${loss}`
+            : `Route that die to ${command.facet}. The system fires with everything in it.${loss}`,
+        );
+      }
       case "share":
         return view.reports.some(
           (r) =>
@@ -1494,7 +1551,23 @@ export function applyCommand(
       }
       case "allocate": {
         const die = e.dice.find((entry) => entry.id === command.die);
-        if (die) die.facet = command.facet;
+        if (!die) break;
+        // Leaving the tray is what costs: the surge routed to this system is
+        // surge the dice below it no longer get.
+        if (die.facet === null) {
+          const browned = ventedBy(e.dice, die);
+          const lost = new Set(browned.map((d) => d.id));
+          e.vented.push(...browned);
+          e.dice = e.dice.filter((entry) => !lost.has(entry.id));
+          e.routings += 1;
+          if (browned.length)
+            append(
+              next,
+              `${player.name} routed a ${die.value} and browned out ${browned.length === 1 ? "a die" : `${browned.length} dice`}.`,
+            );
+        }
+        const routed = e.dice.find((entry) => entry.id === command.die);
+        if (routed) routed.facet = command.facet;
         break;
       }
       case "hold":

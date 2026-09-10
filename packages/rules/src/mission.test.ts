@@ -24,6 +24,7 @@ import {
   facetForAction,
   worldPressure,
   reachable,
+  routingCapacity,
   siteAt,
   tableView,
   type GlitterFacet,
@@ -56,7 +57,11 @@ function committed(state: MissionState, seat: Seat): string[] {
 function push(state: MissionState, count: number): MissionState {
   let s = state;
   while (s.private.bag.engine.pending.length < count) {
-    if (s.private.bag.engine.bagRemaining === 0)
+    const e = s.private.bag.engine;
+    // A bag holding nothing but hazards can never build a surge: every push
+    // busts and puts the hazard straight back, so this has to stop rather
+    // than draw forever.
+    if (e.bagRemaining === 0 || e.bagHazards >= e.bagRemaining)
       throw new Error("Bag exhausted before the surge was built.");
     s = act(s, "bag", { type: "draw" });
   }
@@ -94,8 +99,14 @@ function armed(
     return { state, pieces: loose ? [loose.id] : [] };
   }
   if (!tray().some((die) => die.facet === facet)) {
-    const loose = tray().find((die) => die.facet === null);
-    if (loose)
+    // Routing browns out every loose die showing lower, and the platform only
+    // routes a few times a round, so a careful pilot routes from the bottom
+    // up: the cheapest routing vents nothing.
+    const loose = [...tray()]
+      .filter((die) => die.facet === null)
+      .sort((a, b) => a.value - b.value)[0];
+    const e = state.private.dice.engine;
+    if (loose && e.routings < e.capacity)
       state = act(state, "dice", { type: "allocate", die: loose.id, facet });
   }
   const spent = state.private.dice.engine.dice.filter(
@@ -146,6 +157,15 @@ function march(
     if (arrived(player.position, player.size)) return s;
     if (seat === "bag" && s.private.bag.engine.pending.length === 0)
       s = push(s, 1);
+    // Check there is anything to move with before paying for a full-map BFS.
+    // The platform can run out of routings mid-journey now, and a leg that
+    // cannot be taken should say so rather than be searched for twenty times.
+    {
+      const ready = armed(s, seat, "move");
+      s = ready.state;
+      if (!ready.pieces.length)
+        throw new Error(`${seat} has nothing left to move with.`);
+    }
     const allies = s.players.filter((p) => p.seat !== seat);
     /** A legal resting anchor: allies may be passed but not stood on. */
     const free = (hex: { q: number; r: number }) =>
@@ -503,14 +523,21 @@ describe("Greyhaven mission", () => {
     // Dice held in Shield are dice that did nothing else all round. That is
     // what they buy: the platform takes the hit instead of the team.
     let bracedStart = confront();
-    for (const die of bracedStart.private.dice.engine.dice.filter(
-      (d) => d.facet === null,
-    ))
+    // Routing from the bottom up vents nothing, so this is the whole of what
+    // one round's capacity can put behind the shield.
+    while (true) {
+      const e = bracedStart.private.dice.engine;
+      if (e.routings >= e.capacity) break;
+      const die = [...e.dice]
+        .filter((d) => d.facet === null)
+        .sort((a, b) => a.value - b.value)[0];
+      if (!die) break;
       bracedStart = act(bracedStart, "dice", {
         type: "allocate",
         die: die.id,
         facet: "shield",
       });
+    }
     const braced = round(bracedStart);
     expect(braced.instability - bracedStart.instability).toBeLessThan(
       exposedHit,
@@ -519,6 +546,72 @@ describe("Greyhaven mission", () => {
       braced.log.some((entry) => entry.text.includes("holds the line")),
     ).toBe(true);
   });
+  it("browns out the platform when surge is routed to the top first", () => {
+    /** A platform holding known faces, so the ordering can be reasoned about. */
+    const rig = (values: number[]) => {
+      const s = createMission();
+      const e = s.private.dice.engine;
+      e.dice = values.map((value, i) => ({ id: `d${i}`, value, facet: null }));
+      e.capacity = routingCapacity(values.length);
+      e.routings = 0;
+      return s;
+    };
+    const route = (s: MissionState, die: string, facet: GlitterFacet) =>
+      act(s, "dice", { type: "allocate", die, facet });
+    const inside = (s: MissionState, facet: GlitterFacet) =>
+      s.private.dice.engine.dice.filter((d) => d.facet === facet);
+
+    // Five dice, three routings. The platform cannot power everything it is
+    // holding, which is what makes the order a decision rather than a sort.
+    expect(routingCapacity(5)).toBe(3);
+
+    // Careful: route from the bottom up. Nothing is ever lower than the die
+    // being routed, so nothing vents — and the two best dice never get used.
+    let careful = rig([1, 2, 4, 5, 6]);
+    for (const id of ["d0", "d1", "d2"])
+      careful = route(careful, id, "stabilizer");
+    expect(careful.private.dice.engine.vented).toHaveLength(0);
+    expect(systemOutput(inside(careful, "stabilizer"))).toBe(4);
+    expect(
+      applyCommand(careful, "dice", {
+        type: "allocate",
+        die: "d3",
+        facet: "stabilizer",
+      }).error,
+    ).toContain("routes 3 times a round");
+
+    // Greedy: take the top first and the whole platform browns out behind it.
+    let greedy = rig([1, 2, 4, 5, 6]);
+    greedy = route(greedy, "d4", "stabilizer");
+    expect(
+      greedy.private.dice.engine.vented.map((d) => d.value).sort(),
+    ).toEqual([1, 2, 4, 5]);
+    expect(greedy.private.dice.engine.dice).toHaveLength(1);
+    expect(systemOutput(inside(greedy, "stabilizer"))).toBe(2);
+
+    // Read: spend the bottom to make room for the top. One routing browns out
+    // the two dice that were never going to fit, and the run pays for it.
+    let read = rig([1, 2, 4, 5, 6]);
+    read = route(read, "d2", "stabilizer");
+    expect(read.private.dice.engine.vented.map((d) => d.value)).toEqual([1, 2]);
+    read = route(read, "d3", "stabilizer");
+    read = route(read, "d4", "stabilizer");
+    expect(read.private.dice.engine.vented).toHaveLength(2);
+    expect(systemOutput(inside(read, "stabilizer"))).toBe(9);
+
+    // Past the manifold a die can be rerouted for nothing, but surge does not
+    // flow backwards: a routed die never returns to the tray.
+    read = route(read, "d4", "boom");
+    expect(read.private.dice.engine.routings).toBe(3);
+    expect(
+      applyCommand(read, "dice", {
+        type: "allocate",
+        die: "d4",
+        facet: null,
+      }).error,
+    ).toContain("backwards");
+  });
+
   it("pays a calibrated system better than a numerous one", () => {
     // The same count of dice is worth more when it fits together.
     expect(systemOutput([{ value: 2 }, { value: 3 }])).toBe(2);
@@ -665,8 +758,9 @@ describe("Greyhaven mission", () => {
     let s = createMission();
     const tray = () => s.private.dice.engine.dice;
     const loose = () => tray().filter((die) => die.facet === null);
+    /** Routes the cheapest loose die, which is the routing that vents nothing. */
     const put = (facet: GlitterFacet) => {
-      const die = loose()[0]!;
+      const die = [...loose()].sort((a, b) => a.value - b.value)[0]!;
       s = act(s, "dice", { type: "allocate", die: die.id, facet });
       return die;
     };
@@ -684,11 +778,16 @@ describe("Greyhaven mission", () => {
     );
 
     // Two dice into drive, and they are gone: reaching the fight costs the
-    // same tray the guns are drawn from.
+    // same tray the guns are drawn from, and the same routing capacity.
     put("mobility");
     put("mobility");
+    expect(s.private.dice.engine.routings).toBe(2);
     const quarry = s.enemies[0]!.id;
     s = closeWith(s, "dice", quarry);
+
+    // Crossing the ground took this round's platform, so the shot belongs to
+    // the next one. That is the cost the capacity limit is charging for.
+    s = round(s);
 
     // The Boom Gun is inert until something braces it.
     const aim = put("targeting");
@@ -718,7 +817,10 @@ describe("Greyhaven mission", () => {
     });
     // One shot consumed the whole system, bracing included.
     expect(tray().filter((die) => system.includes(die.id))).toHaveLength(0);
-    expect(tray()).toHaveLength(0);
+    // And the platform is out of routings, so what is still loose stays loose.
+    const engine = s.private.dice.engine;
+    expect(engine.routings).toBe(engine.capacity);
+    expect(loose().length).toBeGreaterThan(0);
   });
   it("makes card combos more efficient than singles and upgrades change output", () => {
     let s = createMission();
@@ -909,8 +1011,14 @@ describe("Greyhaven mission", () => {
     const spend = (seat: Seat) => {
       const player = s.players.find((p) => p.seat === seat)!;
       if (seat === "bag" && s.private.bag.engine.pending.length === 0) {
-        if (s.private.bag.engine.bagRemaining === 0) return false;
-        s = push(s, 1);
+        const e = s.private.bag.engine;
+        if (e.bagRemaining === 0 || e.bagHazards >= e.bagRemaining)
+          return false;
+        try {
+          s = push(s, 1);
+        } catch {
+          return false;
+        }
         return true;
       }
       if (s.phase !== "action") return false;
@@ -946,14 +1054,33 @@ describe("Greyhaven mission", () => {
       return true;
     };
 
-    for (let guard = 0; guard < 400 && s.phase === "action"; guard++) {
-      let acted = false;
+    // A pass that changes nothing has to end the round, or the driver spins:
+    // `spend` returns true for anything it attempted, including attempts that
+    // the rules refused, so the world state is the only honest progress check.
+    const signature = () =>
+      [
+        s.round,
+        s.progress,
+        s.instability,
+        s.resources.power,
+        ...s.players.map((p) => `${p.seat}@${hexKey(p.position)}`),
+        ...missionSeats.map((seat) => {
+          const e = s.private[seat].engine;
+          return (
+            e.dice.length + e.hand.length + e.pending.length + e.markers.length
+          );
+        }),
+      ].join("|");
+    for (let guard = 0; guard < 200 && s.phase === "action"; guard++) {
+      const before = signature();
       for (const seat of missionSeats)
-        if (!s.players.find((p) => p.seat === seat)!.ready && spend(seat))
-          acted = true;
-      if (!acted && s.phase === "action") s = round(s);
+        if (!s.players.find((p) => p.seat === seat)!.ready) spend(seat);
+      if (signature() === before && s.phase === "action") s = round(s);
     }
-    expect(s.phase).toBe("won");
+    expect(
+      s.phase,
+      `round ${s.round}: progress ${s.progress}/${s.requiredProgress}, instability ${s.instability}/12`,
+    ).toBe("won");
     expect(s.progress).toBeGreaterThanOrEqual(s.requiredProgress);
     // Everyone had to cross the map and put something in.
     expect(

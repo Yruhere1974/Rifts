@@ -49,11 +49,11 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     growth: [
       {
         at: 3,
-        gain: "A sixth die every round: another system live at once, and a better chance of a set or a run.",
+        gain: "A sixth die and a fourth routing: more of each roll survives to be used.",
       },
       {
         at: 5,
-        gain: "A seventh die. Enough to lock a system on with three and still crew the rest of the platform.",
+        gain: "A seventh die and a fifth routing. Enough to lock a system on and still crew the rest of the platform.",
       },
     ],
     size: 2,

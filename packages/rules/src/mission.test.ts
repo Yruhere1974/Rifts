@@ -163,7 +163,7 @@ function march(
     {
       const ready = armed(s, seat, "move");
       s = ready.state;
-      if (!ready.pieces.length)
+      if (!ready.pieces.length || ready.pieces.some((id) => !id))
         throw new Error(`${seat} has nothing left to move with.`);
     }
     const allies = s.players.filter((p) => p.seat !== seat);
@@ -728,14 +728,30 @@ describe("Greyhaven mission", () => {
     ).toContain("Wired to 1 module.");
   });
 
-  it("lets every engine carry something forward at the same price", () => {
-    // A card held back survives the refill and costs a slot in the new hand.
-    let cards = createMission();
-    const keeper = cards.private.cards.engine.hand[0]!;
-    cards = act(cards, "cards", { type: "keep", piece: keeper.id });
-    const nextCards = round(cards).private.cards.engine.hand;
-    expect(nextCards.some((card) => card.id === keeper.id)).toBe(true);
-    expect(nextCards).toHaveLength(5);
+  it("lets every engine carry something forward at its own price", () => {
+    // The Walker has nothing to pin: the whole hand carries itself. What it
+    // pays instead is tempo, because the network re-forms below hand size.
+    const cards = createMission();
+    expect(cards.private.cards.engine.hand).toHaveLength(5);
+    expect(
+      applyCommand(cards, "cards", {
+        type: "keep",
+        piece: cards.private.cards.engine.hand[0]!.id,
+      }).error,
+    ).toContain("carries itself");
+
+    // Dump the hand on one long chain and next round opens on three.
+    const emptied = structuredClone(cards);
+    emptied.private.cards.engine.hand = [];
+    expect(round(emptied).private.cards.engine.hand).toHaveLength(3);
+
+    // Play two, keep three, and the hand comes back full instead.
+    const paced = structuredClone(cards);
+    paced.private.cards.engine.hand = paced.private.cards.engine.hand.slice(
+      0,
+      3,
+    );
+    expect(round(paced).private.cards.engine.hand).toHaveLength(5);
 
     // Holding a surge over means staying amped: stress starts raised.
     let bag = push(createMission(), 2);

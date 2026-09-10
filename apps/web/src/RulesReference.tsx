@@ -40,15 +40,16 @@ const engineRules: Record<
       "A weave alternates Channel and Resonance, and it runs as long as your hand can sustain it. Cards commit in the order you select them, and that order is the chain.",
       "Length is the skill, because a weave pays more than its cards are worth apart: one gives 1, two give 3, three give 6 and four give 10. A broken chain gives nothing at all, and the thread across your hand shows whether it holds before you commit.",
       "Exploit Opening stands in for either side of the chain, which is its second use and a real decision against saving it. On its own, after the relay suppresses the shield, it still gives +2 when used to Assist.",
-      "Hold keeps a card through the deal with the chain you are building around it. It sits out this round, which is the price, and it counts against your new hand rather than adding to it: you are buying next round's longer weave with this round's play.",
+      "Nothing is discarded. Whatever you do not spend is still in your hand next round, so there is nothing to hold back and nothing to lose by waiting.",
+      "What limits you is the draw. The network re-forms two fewer cards than your hand holds, so a hand spent to the floor comes back at three, not five. A long chain is bought with the round after it.",
       "Moving needs only one card; extra effect does not improve movement, so never spend a chain on a step.",
     ],
     growth:
-      "Field experience adds a Channel in round 3 and a Resonance in round 5, so the hand reaches seven cards. Because length pays superlinearly, each addition is worth more than the last: the seventh card is what makes a weave of four possible at all. Keeping your core adds +1 to every weave.",
+      "Field experience adds a Channel in round 3 and a Resonance in round 5, so the hand reaches seven cards and the draw rises with it, to four and then five. Because length pays superlinearly, each addition is worth more than the last, and a deeper battery is what makes a weave of four sustainable rather than a one-off. Keeping your core adds +1 to every weave.",
     cooperation:
-      "Weave long for the team's decisive contribution, or hold a card or two so next round opens with the chain already part built. Spending Exploit Opening as a wildcard keeps a chain alive; saving it keeps a response available during the same team round.",
+      "The team should know which round your big chain is coming, because the round after it you are close to useless. Weave long when the breach is in reach; play short and stay loaded when the mission still needs you every round. Spending Exploit Opening as a wildcard keeps a chain alive; saving it keeps a response available during the same team round.",
     example:
-      "Channel, Resonance, Channel is a weave of 3 for 6 effect, against the 4 those cards are worth as a pair plus a single. Add Exploit Opening on the end as a stand-in Resonance and the same hand pays 10. Hold one Channel back instead and four fresh cards deal around it next round, opening with a link already placed.",
+      "Channel, Resonance, Channel is a weave of 3 for 6 effect, against the 4 those cards are worth as a pair plus a single. Emptying the hand on all five pays 15, and opens the next round on three cards, so the most you can weave then is 6. Playing three and keeping two pays 6 now and refills you to five, which is 6 again next round and a full five-card chain still available after that.",
   },
   bag: {
     kit: "A fresh bag each round: six safe tokens and two hazards. Safe find, cache, and signal tokens each give 1 effect; their names do not restrict which action they can fund.",

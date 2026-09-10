@@ -71,11 +71,11 @@ export const specialists: SpecialistDefinition[] = specialistsSchema.parse([
     growth: [
       {
         at: 3,
-        gain: "A third Channel: enough links for a weave of three, worth 6.",
+        gain: "A third Channel, and a fourth card re-forming each round: a deeper battery, not just a bigger hand.",
       },
       {
         at: 5,
-        gain: "A third Resonance. Seven cards can carry a weave of four, worth 10.",
+        gain: "A third Resonance, and a fifth re-forming. Seven cards can carry a weave of four, worth 10, and recover from it.",
       },
     ],
     size: 1,

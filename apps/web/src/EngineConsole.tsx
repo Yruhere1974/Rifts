@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import {
   coherence,
+  handRefill,
   surgeOutput,
   ventedBy,
   weaveOutput,
@@ -465,7 +466,7 @@ const wants = (chain: readonly MissionCard[]): string => {
  * chain draws nothing at all: the silence is the feedback, and the player has
  * spent nothing to learn it.
  */
-function CardsEngine({ view, selected, piece, onKeep }: EngineProps) {
+function CardsEngine({ view, selected, piece }: EngineProps) {
   const hand = view.engine.hand;
   const ids = hand.map((card) => card.id);
   const arrivals = useArrivals(ids);
@@ -477,10 +478,12 @@ function CardsEngine({ view, selected, piece, onKeep }: EngineProps) {
     .filter((card): card is MissionCard => Boolean(card));
   const woven = chain.length >= 2 && weaves(chain);
   const link = woven ? chain.map((card) => card.id).join("|") : "";
+  // The hand is a battery: it carries whatever goes unspent but re-forms
+  // below its own size, so the readout has to price next round as well.
+  const refill = handRefill(view.engine.handSize);
   const bonus = view.players.find((p) => p.seat === view.seat)?.upgraded
     ? 1
     : 0;
-  const held = hand.filter((card) => card.kept).length;
   const handRef = useRef<HTMLDivElement>(null);
   const [thread, setThread] = useState<Thread | null>(null);
   useEffect(() => {
@@ -536,7 +539,6 @@ function CardsEngine({ view, selected, piece, onKeep }: EngineProps) {
             className={classes(
               "playing-card",
               selected.includes(card.id) && "selected",
-              card.kept && "held",
               arrivals.has(card.id) && "motion-arrive",
             )}
             style={delayStyle(staggerDelay(order.get(card.id) ?? 0))}
@@ -547,27 +549,10 @@ function CardsEngine({ view, selected, piece, onKeep }: EngineProps) {
             <strong>{card.name}</strong>
             <p>{card.description}</p>
             <span className="card-bottom">
-              {card.kept
-                ? "HELD OVER"
-                : selected.includes(card.id)
-                  ? `LINK ${selected.indexOf(card.id) + 1}`
-                  : "AVAILABLE"}
+              {selected.includes(card.id)
+                ? `LINK ${selected.indexOf(card.id) + 1}`
+                : "AVAILABLE"}
             </span>
-            <i
-              className="hold-pip"
-              role="button"
-              tabIndex={0}
-              aria-label={`${card.kept ? "Release" : "Hold"} ${card.name} for next round`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onKeep(card.id);
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.stopPropagation();
-                onKeep(card.id);
-              }}
-            />
           </button>
         ))}
         {!hand.length && <p className="empty-engine">Your hand is spent.</p>}
@@ -602,9 +587,7 @@ function CardsEngine({ view, selected, piece, onKeep }: EngineProps) {
             : chain.length === 1
               ? `Weave of 1 — ${weaveOutput(1) + bonus} output. Add ${wants(chain)} for ${weaveOutput(2) + bonus}.`
               : "Broken chain. A weave must alternate; Exploit Opening can stand in for either side."}
-        {held > 0
-          ? ` ${held} card${held === 1 ? "" : "s"} held for next round, and counted against the deal.`
-          : " Use the pip on a card to hold it through the deal."}
+        {` Unspent cards stay, but the network re-forms only ${refill} a round: spending all ${hand.length} now opens next round on ${Math.min(view.engine.handSize, refill)}.`}
       </small>
     </div>
   );

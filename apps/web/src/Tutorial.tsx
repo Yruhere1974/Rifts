@@ -259,7 +259,7 @@ const lessons: Lesson[] = [
     instruction:
       "Switch to Ley Line Walker. Spend cards to Move to The breach, then select a Channel and a Resonance together and Contribute.",
     consequence:
-      "A weave alternates Channel and Resonance, and length pays more than the cards are worth apart: 1, 3, 6, 10. This pair produces 3 (4 if upgraded), doubled by the relay, and the readout under your hand says what a longer chain would pay. A single card moves you further than it contributes, so the hand is spent between travelling and arriving.",
+      "A weave alternates Channel and Resonance, and length pays more than the cards are worth apart: 1, 3, 6, 10. This pair produces 3 (4 if upgraded), doubled by the relay. Nothing you hold back is lost, but the network only re-forms three cards a round, so emptying your hand for one huge chain leaves the next round thin. A single card moves you further than it contributes, so the hand is spent between travelling and arriving.",
     target: ".engine-section",
     complete: (v) =>
       v.log.some(

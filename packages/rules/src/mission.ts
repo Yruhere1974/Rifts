@@ -107,8 +107,6 @@ export type MissionCard = {
   name: string;
   description: string;
   kind: string;
-  /** Held back from this round to survive the refill. */
-  kept?: boolean;
 };
 export type MissionToken = { id: string; kind: string; kept?: boolean };
 export type MissionEngine = {
@@ -121,6 +119,8 @@ export type MissionEngine = {
   /** Routings the platform can make this round. Always fewer than its dice. */
   capacity: number;
   hand: MissionCard[];
+  /** How many cards a full hand holds. The draw never reaches it in one round. */
+  handSize: number;
   /** Safe tokens from the current push. A hazard clears them; it never joins. */
   pending: MissionToken[];
   bagRemaining: number;
@@ -563,6 +563,14 @@ export function ventedBy(
  */
 export const routingCapacity = (dice: number): number => Math.max(1, dice - 2);
 
+/**
+ * How many cards the ley network re-forms in a round. Fewer than the hand
+ * holds, so spending the hand down is a real debt rather than free: the hand
+ * only returns to full across a round the Walker plays quietly.
+ */
+export const handRefill = (handSize: number): number =>
+  Math.max(1, handSize - 2);
+
 /** A system's total: what its dice are worth, then how well they fit together. */
 export const systemOutput = (dice: readonly { value: number }[]): number =>
   coherence(dice).apply(diceOutput(dice));
@@ -640,8 +648,11 @@ function refill(state: MissionState, seat: Seat): void {
   // Every engine keeps the same way: what was held back survives the refill
   // and counts against the new supply rather than adding to it.
   const kept = p.engine.dice.filter((die) => die.facet === "locked");
-  const keptCards = p.engine.hand.filter((card) => card.kept);
   const keptTokens = p.engine.pending.filter((token) => token.kept);
+  // The Walker discards nothing: the whole surviving hand is carried across,
+  // captured here because the engine is rebuilt from scratch just below.
+  const carried = p.engine.hand;
+  const dealt = p.engine.handSize > 0;
   const keptSlots = p.engine.keptSlots.filter((slot) =>
     p.engine.slots.includes(slot),
   );
@@ -651,6 +662,7 @@ function refill(state: MissionState, seat: Seat): void {
     routings: 0,
     capacity: 0,
     hand: [],
+    handSize: 0,
     pending: [],
     bagRemaining: 0,
     bagHazards: 0,
@@ -682,16 +694,26 @@ function refill(state: MissionState, seat: Seat): void {
       "spell",
       "spell",
       "reaction",
-      // Growth alternates Channel and Resonance so each tier adds a weave.
+      // Growth alternates Channel and Resonance so each tier adds a link.
       ...(tier >= 1 ? ["channel"] : []),
       ...(tier >= 2 ? ["spell"] : []),
     ];
+    // The hand is a slow battery, not a fresh deal. Nothing unspent is
+    // discarded, and the draw is capped below the hand size, so a long chain
+    // is paid for by the thin round that follows it: dump five for 15 and you
+    // come back with three. That is the Ley Line Walker's whole decision, and
+    // it is a decision about tempo rather than about this round alone.
+    // The opening hand is dealt whole; only later rounds are rationed, so a
+    // Walker starts able to weave and then has to earn the next long chain.
+    p.engine.handSize = fresh.length;
+    const room = Math.max(0, fresh.length - carried.length);
+    const draw = dealt ? Math.min(room, handRefill(fresh.length)) : room;
     p.engine.hand = [
-      ...keptCards,
+      ...carried,
       ...shuffle(
         state,
         fresh
-          .slice(0, Math.max(0, fresh.length - keptCards.length))
+          .slice(0, draw)
           .map((kind, i) => card(`${prefix}-card-${i}`, kind)),
       ),
     ];
@@ -736,6 +758,7 @@ export function createMission(seed = 1): MissionState {
       routings: 0,
       capacity: 0,
       hand: [],
+      handSize: 0,
       pending: [],
       bagRemaining: 0,
       bagHazards: 0,
@@ -964,18 +987,22 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       case "keep": {
         const holdable =
           view.seat === "cards"
-            ? e.hand.some((card) => card.id === command.piece)
+            ? false
             : view.seat === "bag"
               ? e.pending.some((token) => token.id === command.piece)
               : view.seat === "systems"
                 ? e.slots.includes(command.piece)
                 : false;
-        return !holdable
-          ? deny("That is not something you can hold over.")
-          : allow(
-              "None",
-              "Hold it back from this round so it survives the refill. What you keep counts against next round's supply rather than adding to it.",
-            );
+        return view.seat === "cards"
+          ? deny(
+              "Your hand carries itself. Whatever you do not spend is still there next round; only the draw is limited.",
+            )
+          : !holdable
+            ? deny("That is not something you can hold over.")
+            : allow(
+                "None",
+                "Hold it back from this round so it survives the refill. What you keep counts against next round's supply rather than adding to it.",
+              );
       }
       case "allocate": {
         if (view.seat !== "dice")
@@ -1539,8 +1566,6 @@ export function applyCommand(
         append(next, `${player.name} requests help with ${command.target}.`);
         break;
       case "keep": {
-        const card = e.hand.find((entry) => entry.id === command.piece);
-        if (card) card.kept = !card.kept;
         const token = e.pending.find((entry) => entry.id === command.piece);
         if (token) token.kept = !token.kept;
         if (e.slots.includes(command.piece))

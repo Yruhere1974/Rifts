@@ -198,7 +198,7 @@ test("specialist rule references explain each engine without changing seats", as
   // so each reference is checked for its own version of both.
   const clues = [
     ["Glitter Boy", "cannot fire unbraced", "Hold over keeps a die"],
-    ["Ley Line Walker", "Length is the skill", "Hold keeps a card"],
+    ["Ley Line Walker", "Length is the skill", "The network re-forms"],
     ["Juicer", "spends your entire surge", "Hold keeps tokens"],
     [
       "Techno-Wizard",

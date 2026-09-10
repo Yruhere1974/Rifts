@@ -2933,39 +2933,8 @@ select {
 .cards-engine .card-hand {
   min-width: 0;
 }
-.playing-card,
 .system-module {
   position: relative;
-}
-/* The hold control sits on the piece rather than beside it: holding is a
-   property of that card, and a separate row of toggles would read as a second
-   set of pieces. */
-.hold-pip {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  border: 1px dashed #6f8a7e;
-  background: #141d1c;
-  cursor: pointer;
-}
-.hold-pip:hover {
-  border-style: solid;
-  background: #2c4038;
-}
-.playing-card.held {
-  border-style: dashed;
-  border-color: #6f8a7e;
-  border-bottom-color: #6f8a7e;
-}
-.playing-card.held .hold-pip {
-  border-style: solid;
-  background: #8fb0a0;
-}
-.playing-card.held .card-bottom {
-  color: #8fb0a0;
 }
 .bag-token.held {
   border-color: #d7e6d7;

@@ -105,7 +105,7 @@ export const playableMission = playableMissionSchema.parse({
       seat: "cards",
       name: "Ley Line Walker",
       engine:
-        "Weave a chain that alternates Channel and Resonance; Exploit Opening stands in for either side. Length pays 1, 3, 6 and 10. The hand grows by a Channel at round 3 and a Resonance at round 5, and held cards survive the deal.",
+        "Weave a chain that alternates Channel and Resonance; Exploit Opening stands in for either side. Length pays 1, 3, 6 and 10. Nothing unspent is discarded, but the hand re-forms two fewer cards than it holds, so a long chain is paid for by the thin round after it. The hand grows by a Channel at round 3 and a Resonance at round 5.",
       upgrade: "Every weave produces +1 effect permanently.",
     },
     {

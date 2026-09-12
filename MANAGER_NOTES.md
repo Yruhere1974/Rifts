@@ -2,7 +2,11 @@
 
 ## Current Ratchet
 
-The repository now contains the first playable local vertical slice: Dimensional Stabilizer at Greyhaven. It includes the shared Pixi board, four mechanically distinct React consoles, authoritative Colyseus rooms, private readings, assistance, core upgrade/donation choices, intermingled rounds, and victory/defeat.
+The repository contains the first playable local vertical slice: Dimensional Stabilizer at Greyhaven. It includes the shared Pixi board, four mechanically distinct React consoles, authoritative Colyseus rooms, private readings, assistance, core upgrade/donation choices, intermingled rounds, and victory/defeat.
+
+The slice now sits on a hex map. Ratcheted at `v2026.09.12-hex-board-and-master-map`: a 476-hex undercroft with multi-hex unit footprints and true adjacency, objectives as apparatus you stand beside, patrols that walk toward you and hold ground, a shared motion vocabulary, four engines each given a decision of its own, engine families separated from classes, per-tab seats with a shared table screen, and the master map.
+
+One thing went backwards to get here and is recorded rather than hidden. Two browser tests that play the mission all the way to a win through the UI are `test.fixme` on `main` for the first time. Crossing ground costs commitments, so the mission runs longer and needs pressure management, and the driver does not yet play well enough to close it. Winnability is still proven at the rules level by the goal-seeking driver in `packages/rules/src/mission.test.ts`, so this is a driver gap rather than a product regression, but it is the ratchet's one loose tooth and it is the next thing to fix.
 
 Active work belongs on `develop`; stable states are merged to `main` and tagged, then pushed to `origin`. Deployment and hosting are still out of scope and were never authorized: the unrelated Household Hub push-notification recap in the conversation did not authorize changes to this game's deployment.
 
@@ -29,7 +33,7 @@ The first prototype should prove:
 - Repo operating model: `RATCHETING.md`
 - Class lineup and engine mapping: `docs/product/class-lineup.md`
 - Executable mission details: `docs/product/playable-slice.md`
-- Master map design (not built): `docs/product/master-map.md`
+- Master map design and what was built from it: `docs/product/master-map.md`
 - Visibility and lifecycle: `docs/architecture/adr-0002-prototype-visibility.md`
 - Critical and comparison reviews: `docs/playtests/prototype-review.md`
 - Local setup and play: `README.md`
@@ -70,15 +74,15 @@ Run an unscripted four-person playtest. Assess whether the engines feel differen
 
 Current mission constants: 24 stabilization, 12 instability loss, six-round deadline, 1 Power per rift contribution, relay costs 2 Power and doubles output, blind work adds 5 instability, Techno-Wizard priming adds 1 output. These are authored prototype numbers, not a redesign of the concept constitution.
 
-Verification covers 38 unit tests and twelve browser/network tests (two of which are `test.fixme` victory drivers), including a four-browser victory, guided solo-table victory, tutorial pause/resume/reset and keyboard focus, solo loss, wire privacy, reserved-seat rejoining, shared-cost races, and desktop/mobile screenshot/canvas checks. The separate critical reviewer found no remaining concrete blocker after review fixes, including stricter lesson completion and tutorial focus restoration. The full repository check is the release gate; do not infer human enjoyment or final balance from automation.
+Verification covers 53 unit tests and 13 browser/network tests, with two further browser tests parked as `test.fixme` victory drivers, including guided solo-table play, tutorial pause/resume/reset and keyboard focus, solo loss, wire privacy, reserved-seat rejoining, shared-cost races, four seats sharing the master map, a shared screen carrying no seat's private text, and desktop/mobile screenshot/canvas checks. The separate critical reviewer found no remaining concrete blocker after review fixes, including stricter lesson completion and tutorial focus restoration. The full repository check is the release gate; do not infer human enjoyment or final balance from automation.
 
-Last local verification (2026-09-09): `npm run check` passed end to end; `npm audit --audit-level=high` reported zero vulnerabilities; `git diff --check` passed. Both the web URL and Colyseus health endpoint responded successfully.
+Last local verification (2026-09-12): `npm run check` passed end to end, with 53 unit tests, 13 browser tests and 2 `test.fixme`; `git diff --check` passed. `npm audit --audit-level=high` passes the gate and reports 2 moderate advisories, both the same `@vitest/mocker` path-traversal issue in a dev-only test dependency that does not ship.
 
 Adding a web dependency or changing `vite.config.ts` also needs the web dev server restarted, for the same reuse reason. A local game server started before a rules change keeps serving the old view shape, because `npm run dev -w @rifts/server` runs `tsx` without watch and Playwright reuses an existing server. Restart it after touching `packages/rules` or every browser test fails on a stale wire contract.
 
 ## In Flight
 
-- Master map, BUILT on `feature/hex-board`, except the priced extension. `docs/product/master-map.md` is the design and now records what was built. A separate screen carrying the outline of the undercroft and nothing else: no apparatus, no patrols, no units. On it are the mission's own briefing marks, ink the team draws, marks derived from published reports, and transient pings. Reached at `?map=1` from a header control, and mirrored read-only on the table screen. Verification: 53 unit tests and 13 browser tests, including four seats sharing one surface and a shared screen that carries no seat's private text.
+- Master map, RATCHETED into `main`, except the priced extension. `docs/product/master-map.md` is the design and now records what was built. A separate screen carrying the outline of the undercroft and nothing else: no apparatus, no patrols, no units. On it are the mission's own briefing marks, ink the team draws, marks derived from published reports, and transient pings. Reached at `?map=1` from a header control, and mirrored read-only on the table screen. Verification: 53 unit tests and 13 browser tests, including four seats sharing one surface and a shared screen that carries no seat's private text.
 
 - Two rules were decided while building and both are worth keeping. Resolution reach is independent of a claim's drawn spread, because counting the spread let a vague claim resolve from further away than a precise one, and let a wide claim settle from the deployment anchors without anyone walking anywhere. And the planning window needs no vote and no lock: it is open while nobody has committed an action this round, and the first commitment closes it, which suits simultaneous rounds where waiting for a table to agree would be a turn lock in disguise.
 
@@ -180,7 +184,7 @@ Adding a web dependency or changing `vite.config.ts` also needs the web dev serv
 
 - Two things deliberately left as they are. Dice do not scramble on the very first tray: at deployment your kit is already laid out, and a roll belongs to a round refresh, so the cascade starts at round 2. And the risk band has no static colour treatment under reduced motion, because the band name and the exact odds are both printed anyway.
 
-- HEX BOARD, on branch `feature/hex-board` and deliberately not merged or tagged. The board is a hex map with multi-hex unit footprints; see the branch commits. Two browser tests that play the mission all the way to a win through the UI are marked `test.fixme` rather than deleted: crossing ground costs commitments, so the mission now runs longer and needs pressure management, and the driver does not yet play well enough to close it. Winnability itself is proven at the rules level by the goal-seeking driver in `packages/rules/src/mission.test.ts`. Restoring those two drivers is the next piece of work on this branch.
+- HEX BOARD, now merged and tagged `v2026.09.12-hex-board-and-master-map`. The board is a hex map with multi-hex unit footprints; see the branch commits. Two browser tests that play the mission all the way to a win through the UI are marked `test.fixme` rather than deleted: crossing ground costs commitments, so the mission now runs longer and needs pressure management, and the driver does not yet play well enough to close it. Winnability itself is proven at the rules level by the goal-seeking driver in `packages/rules/src/mission.test.ts`. Restoring those two drivers is the first piece of work on the next branch, and it is entangled with the balance finding below: a driver cannot close a mission that a person cannot close either, so tuning and re-arming the drivers are one job rather than two.
 
 - The tutorial was rewritten for the hex map: fourteen lessons instead of twelve. Guidance moved off hardcoded lesson indices and onto each lesson object, so lessons can be added without renumbering a parallel array. Two new lessons teach the spatial layer: "Ground has to be crossed" (engine output buys distance, journeys take several commitments, Move never occupies a placement module) and "Room to stand" (a standard specialist fits every passage, a Glitter Boy does not). A browser test follows whatever the guide highlights and confirms it walks the map lessons with no dead end.
 

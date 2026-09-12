@@ -141,7 +141,6 @@ export function App() {
   const [lobbyMode, setLobbyMode] = useState<"practice" | "team">(
     link ? "team" : "practice",
   );
-  const [lobbySeat, setLobbySeat] = useState<Seat>(link?.seat ?? "dice");
   const [invite, setInvite] = useState(link?.room ?? "");
   const [help, setHelp] = useState(false);
   const [artifact, setArtifact] = useState(false);
@@ -1254,19 +1253,10 @@ export function App() {
                 </div>
                 {lobbyMode === "team" && (
                   <div className="join-controls">
-                    <label>
-                      Your specialist
-                      <select
-                        value={lobbySeat}
-                        onChange={(e) => setLobbySeat(e.target.value as Seat)}
-                      >
-                        {seats.map((s) => (
-                          <option value={s} key={s}>
-                            {identities[s].title} / {identities[s].engine}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <p className="join-note">
+                      You claim your specialist on the master tab, which opens
+                      their console in its own window.
+                    </p>
                     <label>
                       Room code
                       <input
@@ -1300,15 +1290,21 @@ export function App() {
                     setHelp(false);
                     setHistory(false);
                     setRulesOpen(false);
+                    // A cooperative mission opens on the master tab, which
+                    // holds no seat and spawns a console per specialist. Solo
+                    // keeps one tab and switches between map and console.
+                    if (lobbyMode === "team") {
+                      const room = invite.trim();
+                      window.location.href = room
+                        ? `/?master=1&room=${encodeURIComponent(room)}`
+                        : "/?master=1";
+                      return;
+                    }
+                    // Only the solo table reaches here, and it always opens
+                    // on the dice seat before switching freely.
                     setScreen("map");
                     setBriefing(true);
-                    void game.connect(
-                      lobbyMode,
-                      lobbyMode === "practice" ? "dice" : lobbySeat,
-                      lobbyMode === "team"
-                        ? invite.trim() || undefined
-                        : undefined,
-                    );
+                    void game.connect("practice", "dice", undefined);
                   }}
                 >
                   Deploy to Greyhaven

@@ -21,7 +21,11 @@ npm run dev:web -- --host 0.0.0.0
 
 Open **http://localhost:5174**. The game server uses port **2568**, proxied through Vite's `/game` route. These ports avoid the older local services on 5173/2567. If a port is already occupied by another application, adjust both the server/proxy configuration and Playwright configuration together.
 
-Choose **Solo table** to explore all four seats, or **Cooperative table** to create a room and share its room code. Seat ownership is per browser tab, so four tabs on one machine can hold four different specialists, as can four separate devices. Reloading a tab reclaims its seat; closing it releases the claim. All four must join before spending capability. Reading and requesting help are available while assembling the team.
+Choose **Solo table** to explore all four seats in one tab, or **Cooperative table** to open a mission from its **master tab**.
+
+The master tab is the page a cooperative mission is opened from and the one that stays open beside it. It carries the mission brief and the master map, and it holds no seat: it never counts toward the four, never gates the round and is never forfeited. Its crew roster claims specialists, and claiming one opens that specialist's console in its own browser tab. So each player ends up with two tabs — the map they plan on, and the unit they run — and switches between them rather than between screens. The solo table keeps the single-tab switch instead.
+
+A master tab may draw on the map as a seat its own browser has claimed, because the console it spawns inherits its client key and the server can tell they are one person. A shared screen owns nothing and stays read-only. Seat ownership is per browser tab, so four tabs on one machine can hold four different specialists, as can four separate devices. Reloading a tab reclaims its seat; closing it releases the claim. All four must join before spending capability. Reading and requesting help are available while assembling the team.
 
 ### Master Map
 

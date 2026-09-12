@@ -3376,3 +3376,72 @@ select {
   stroke: #7d8f7d;
   stroke-width: 0.6;
 }
+
+/* The master tab's crew roster. One console per claimed specialist, spawned
+   into its own browser tab; this tab keeps the map and holds no seat. */
+.master-roster {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.master-roster h3 {
+  margin: 0 0 6px;
+}
+.master-room {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.master-roster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.master-crew {
+  border-left: 2px solid var(--line);
+  padding: 2px 0 6px 9px;
+}
+.master-crew-mine {
+  border-left-color: var(--accent);
+}
+.master-crew-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.master-crew-head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.master-crew p {
+  margin: 2px 0 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.master-crew button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+.master-screen .master-map {
+  padding-top: 0;
+}
+.join-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}

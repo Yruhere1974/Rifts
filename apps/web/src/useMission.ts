@@ -31,7 +31,7 @@ function closeRoom(room: Room | null): void {
  * each tab, so four tabs on one machine can hold four different seats. A
  * browser-wide key would make the server refuse the second tab's seat claim.
  */
-function persistentClientKey(): string {
+export function persistentClientKey(): string {
   const existing = sessionStorage.getItem("rifts-client-key");
   if (existing) return existing;
   const key = browserUuid();

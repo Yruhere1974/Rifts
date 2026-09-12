@@ -10,6 +10,18 @@ It is deliberately split. **The Surface** is built and can be judged on its own.
 
 One rule changed while building, and the document records the rule as built. Resolution reach was going to include the claim's spread; that made a vague claim resolve from _further away_ than a precise one, which is backwards, and it let a wide claim settle from the deployment anchors without anyone walking anywhere. See **Briefing Markers**.
 
+## The Master Tab
+
+A cooperative mission is opened from a master tab rather than from a seat, and that tab stays open for the whole mission. It holds no seat: it is excluded from `seated()`, so it never counts toward the four, never gates the start and is never forfeited when absent, and it receives `tableView()` like any other seatless client, so it can no more see a private engine than a shared screen can.
+
+Consoles are spawned from it, one browser tab per claimed specialist. This is the arrangement a real table wants — the plan in front of you and your engine beside it — and it replaces toggling between two screens in one tab with switching between two tabs.
+
+**The trap, and the mechanism.** A seat belongs to a browser tab, because the client key lives in `sessionStorage`, and the server treats a matching key on the same seat as a reconnect that evicts the older session. A second tab spawned from a page inherits that `sessionStorage`, so a naive "open my console in a new tab" would have had the new tab evict the tab that opened it. That is why the master tab holds no seat at all. It keeps the shared key deliberately: the spawned console claims the seat, and the master tab is then recognised as the same person, which is what lets it plan beside the unit it is running.
+
+**What it may do.** Only the verbs that spend nothing and leave nothing to reconcile — `annotate`, `erase` and pointing — and only as a seat its own key owns. A master tab can therefore never desync a round or commit capability twice. A shared screen owns no seat, so the same rule leaves it read-only with no separate check.
+
+The solo table keeps the single-tab switch between map and console, because one person does not need four tabs to look at one mission, and a phone joining by QR code has only one tab to give.
+
 ## The Brief
 
 Deployment opens on this page rather than on the cockpit, because planning is the thing the map is for and it is worth doing before capability is spent. The brief states the mission in one line and then lays out its objectives.

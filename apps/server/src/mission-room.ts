@@ -15,7 +15,7 @@ import {
   seatMessageSchema,
 } from "./messages.js";
 
-type Role = "player" | "table";
+type Role = "player" | "table" | "master";
 type Session = {
   token: string;
   seat: Seat;
@@ -39,8 +39,9 @@ export class MissionRoom extends Room {
       this.mode === "practice" ? 1 : randomInt(1, 0x100000000),
     );
     this.started = this.mode === "practice";
-    // Four seats plus shared screens, which hold no seat and send no commands.
-    this.maxClients = this.mode === "practice" ? 2 : 8;
+    // Four seats, a master tab each, and shared screens on top. A master tab
+    // holds no seat, so it is never one of the four.
+    this.maxClients = this.mode === "practice" ? 8 : 14;
     this.maxMessagesPerSecond = 20;
     this.setPatchRate(null);
 
@@ -53,7 +54,10 @@ export class MissionRoom extends Room {
         this.reject(client, "Invalid command or session.");
         return;
       }
-      if (session.role !== "player") {
+      if (
+        session.role !== "player" &&
+        !this.plans(session, parsed.data.command.type)
+      ) {
         this.reject(client, "A shared screen cannot act in the mission.");
         return;
       }
@@ -92,7 +96,10 @@ export class MissionRoom extends Room {
         this.reject(client, "Invalid ping or session.");
         return;
       }
-      if (session.role !== "player") {
+      if (
+        session.role !== "player" &&
+        !(session.role === "master" && this.owns(session))
+      ) {
         this.reject(client, "A shared screen cannot point at the map.");
         return;
       }
@@ -106,7 +113,9 @@ export class MissionRoom extends Room {
         this.reject(client, "Invalid seat or session.");
         return;
       }
-      if (this.mode !== "practice" || session.role !== "player") {
+      // A master tab rebinds to whichever seat it claimed, in either mode:
+      // naming a seat is not owning one, and ownership is checked on use.
+      if (session.role !== "master" && this.mode !== "practice") {
         this.reject(client, "Seats can only be switched in practice.");
         return;
       }
@@ -127,8 +136,8 @@ export class MissionRoom extends Room {
     const clientKey = parsed.data.clientKey;
     const role = parsed.data.role;
     const token = randomBytes(32).toString("hex");
-    // A shared screen claims no seat, so seat ownership never applies to it.
-    if (role === "table")
+    // Seatless clients claim nothing, so seat ownership never applies to them.
+    if (role !== "player")
       return { token, seat: parsed.data.seat, clientKey, role };
     const existing = this.owners.get(parsed.data.seat);
     if (existing && existing !== clientKey)
@@ -147,7 +156,7 @@ export class MissionRoom extends Room {
   }
 
   override onJoin(client: Client, _options: unknown, auth: Session): void {
-    if (auth.role === "table") {
+    if (auth.role !== "player") {
       this.sessions.set(client.sessionId, auth);
       this.sendView(client);
       return;
@@ -174,6 +183,29 @@ export class MissionRoom extends Room {
     this.sessions.delete(client.sessionId);
     this.finishAbsentSeats();
     this.sendViews();
+  }
+
+  /**
+   * Whether this session's own client key holds the seat it names. A master
+   * tab spawns its console from the same browser and so shares that tab's
+   * key, which is how the server recognises one person planning beside the
+   * unit they are running. A shared screen owns nothing and stays read-only.
+   */
+  private owns(session: Session): boolean {
+    return this.owners.get(session.seat) === session.clientKey;
+  }
+
+  /**
+   * The verbs a master tab may send: exactly the ones that spend nothing and
+   * leave nothing to reconcile, so a second tab can never desync a round or
+   * commit capability twice.
+   */
+  private plans(session: Session, type: string): boolean {
+    return (
+      session.role === "master" &&
+      (type === "annotate" || type === "erase") &&
+      this.owns(session)
+    );
   }
 
   /** Seated players only; shared screens never gate the round or hold a seat. */
@@ -208,13 +240,19 @@ export class MissionRoom extends Room {
     const session = this.sessions.get(client.sessionId);
     if (!session) return;
     const onlineSeats = this.seated().map((entry) => entry.seat);
-    // A distinct message type, so a table client can never render a seat view.
-    if (session.role === "table") {
+    // A distinct message type, so a seatless client can never render a seat view.
+    if (session.role !== "player") {
       client.send("table", {
         view: tableView(this.mission),
         mode: this.mode,
         onlineSeats,
         started: this.started,
+        token: session.token,
+        seat: session.seat,
+        /** Seats this browser has claimed, so the roster knows what it runs. */
+        ownedSeats: missionSeats.filter(
+          (seat) => this.owners.get(seat) === session.clientKey,
+        ),
       });
       return;
     }

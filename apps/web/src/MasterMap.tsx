@@ -1,4 +1,4 @@
-import { useMemo, useState, type PointerEvent } from "react";
+import { useMemo, useState, type PointerEvent, type ReactNode } from "react";
 import { Crosshair, Eraser, MapPin, Route, Spline } from "lucide-react";
 import {
   briefingRadius,
@@ -86,6 +86,7 @@ export function MasterMap({
   onErase,
   onPing,
   onTakeSeat,
+  roster,
 }: {
   surface: MasterMapSurface;
   seat: Seat | null;
@@ -96,6 +97,8 @@ export function MasterMap({
   onPing: (hex: string) => void;
   /** Present only at deployment, when the map is the screen you land on. */
   onTakeSeat?: (() => void) | undefined;
+  /** The master tab's crew roster, which spawns a console per claimed seat. */
+  roster?: ReactNode;
 }) {
   const [mode, setMode] = useState<Mode>("point");
   const [draft, setDraft] = useState<string[]>([]);
@@ -433,6 +436,7 @@ export function MasterMap({
         </svg>
 
         <aside className="master-map-side">
+          {roster}
           <section className="master-map-brief" aria-label="Mission brief">
             <h3>{playableMission.name}</h3>
             <p className="master-map-objective">{playableMission.objective}</p>

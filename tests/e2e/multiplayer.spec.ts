@@ -8,6 +8,22 @@ import {
   type Seat,
 } from "@rifts/rules";
 
+/**
+ * Opens a cooperative mission from the master tab and returns its room code.
+ * The master tab holds no seat, so the four consoles are claimed separately.
+ */
+async function openRoom(page: Page): Promise<string> {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Cooperative table", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+  await expect(page.getByRole("region", { name: "Master map" })).toBeVisible({
+    timeout: 20_000,
+  });
+  return (await page.locator(".room-code").innerText()).trim();
+}
+
 type Snapshot = {
   view: MissionView;
   token: string;
@@ -149,19 +165,13 @@ test.fixme("four independent browser seats see one world and different private e
     for (let i = 0; i < 4; i++) {
       const page = await contexts[i]!.newPage();
       pages.push(page);
-      await page.goto("/");
-      await page
-        .getByRole("button", { name: "Cooperative table", exact: true })
-        .click();
-      await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
-      if (roomCode)
-        await page.getByRole("textbox", { name: "Room code" }).fill(roomCode);
-      await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
-      await page.getByRole("button", { name: "Take your seat" }).click();
+      // The first context opens the mission from its master tab; every seat
+      // is then claimed by its own console.
+      if (!roomCode) roomCode = await openRoom(await contexts[0]!.newPage());
+      await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
       await expect(page.locator(".connection-indicator")).toHaveText(
         "connected",
       );
-      roomCode = (await page.locator(".room-code").innerText()).trim();
     }
     for (const page of pages)
       await expect(page.locator(".presence-notice")).toHaveCount(0);
@@ -327,24 +337,12 @@ test("four tabs in one browser hold four seats, and the table screen stays publi
     for (let i = 0; i < 4; i++) {
       const page = await context.newPage();
       tabs.push(page);
-      if (roomCode) {
-        await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
-      } else {
-        await page.goto("/");
-        await page
-          .getByRole("button", { name: "Cooperative table", exact: true })
-          .click();
-        await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
-        await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
-        await page.getByRole("button", { name: "Take your seat" }).click();
-      }
+      if (!roomCode) roomCode = await openRoom(await context.newPage());
+      await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
       await expect(page.locator(".engine-heading .eyebrow")).toBeVisible({
         timeout: 20_000,
       });
-      if (!roomCode) {
-        roomCode = (await page.locator(".room-code").innerText()).trim();
-        expect(roomCode).not.toBe("");
-      }
+      expect(roomCode).not.toBe("");
     }
 
     // Every tab holds its own seat, so all four are online and the round starts.
@@ -396,22 +394,12 @@ test("the master map is one shared surface, and stays public on a screen", async
     for (let i = 0; i < 4; i++) {
       const page = await context.newPage();
       tabs.push(page);
-      if (roomCode) {
-        await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
-      } else {
-        await page.goto("/");
-        await page
-          .getByRole("button", { name: "Cooperative table", exact: true })
-          .click();
-        await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
-        await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
-        await page.getByRole("button", { name: "Take your seat" }).click();
-      }
+      if (!roomCode) roomCode = await openRoom(await context.newPage());
+      await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
       await expect(page.locator(".engine-heading .eyebrow")).toBeVisible({
         timeout: 20_000,
       });
-      if (!roomCode)
-        roomCode = (await page.locator(".room-code").innerText()).trim();
+      expect(roomCode).not.toBe("");
     }
     await expect(tabs[0]!.locator(".presence-notice")).toHaveCount(0);
 
@@ -465,6 +453,71 @@ test("the master map is one shared surface, and stays public on a screen", async
     await expect(shared.locator(".master-map-compose")).toHaveCount(0);
     const markup = await table.content();
     for (const secret of secrets) expect(markup).not.toContain(secret);
+  } finally {
+    await context.close();
+  }
+});
+
+test("the master tab spawns a console, keeps its own tab, and plans beside it", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const context = await browser.newContext({ reducedMotion: "reduce" });
+  try {
+    const master = await context.newPage();
+    const roomCode = await openRoom(master);
+    const map = master.getByRole("region", { name: "Master map" });
+
+    // A master tab holds no seat, so until this browser claims one it can
+    // read the surface but not draw on it.
+    await expect(map.locator(".master-map-tools")).toHaveCount(0);
+    await expect(master.getByText(/Claim a specialist/)).toBeVisible();
+
+    // Claiming opens that specialist's console in its own browser tab.
+    const [spawned] = await Promise.all([
+      context.waitForEvent("page"),
+      master
+        .getByRole("button", { name: "Run this specialist" })
+        .first()
+        .click(),
+    ]);
+    await expect(spawned).toHaveURL(new RegExp(`room=${roomCode}&seat=dice`));
+    await expect(spawned.locator(".engine-heading .eyebrow")).toContainText(
+      "Glitter Boy",
+    );
+
+    // The spawned tab shares this browser's key, and the seat claim must not
+    // evict the tab that spawned it: both stay connected.
+    await expect(master.locator(".connection-indicator")).toHaveText(
+      "connected",
+    );
+    await expect(master.getByText("Yours")).toBeVisible();
+
+    // Owning the seat is what unlocks planning, and the mark carries to the
+    // console tab because both are looking at one surface.
+    await expect(map.locator(".master-map-tools")).toHaveCount(1);
+    await map.getByRole("button", { name: "Mark", exact: true }).click();
+    await map.locator(".master-map-canvas").click();
+    await map.getByLabel("Mark label").fill("Regroup before the breach");
+    await map.getByRole("button", { name: "Place mark" }).click();
+    await expect(
+      map.getByText("Regroup before the breach").first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await spawned.getByRole("button", { name: "Master map" }).click();
+    await expect(
+      spawned.getByText("Regroup before the breach").first(),
+    ).toBeVisible({ timeout: 20_000 });
+
+    // A shared screen owns no seat, so it sees the same surface read-only.
+    const screen = await context.newPage();
+    await screen.goto(`/?table=1&room=${roomCode}`);
+    await screen.getByRole("button", { name: "Master map" }).click();
+    const shared = screen.getByRole("region", { name: "Master map" });
+    await expect(
+      shared.getByText("Regroup before the breach").first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(shared.locator(".master-map-tools")).toHaveCount(0);
+    await expect(shared.locator(".master-map-compose")).toHaveCount(0);
   } finally {
     await context.close();
   }

@@ -6,8 +6,13 @@ export const joinOptionsSchema = z.object({
   mode: z.enum(["practice", "team"]),
   seat: seatSchema,
   clientKey: z.string().uuid(),
-  /** A "table" client is a shared screen: no seat, no commands, public view only. */
-  role: z.enum(["player", "table"]).default("player"),
+  /**
+   * A "table" client is a shared screen: no seat, no commands, public view
+   * only. A "master" client is the tab a player keeps beside their console:
+   * also seatless and also public-view-only, but it may draw on the master
+   * map as a seat its own browser has claimed.
+   */
+  role: z.enum(["player", "table", "master"]).default("player"),
 });
 
 const target = z.string().min(1).max(128);

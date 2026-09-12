@@ -3079,6 +3079,20 @@ select {
   fill: #8d7c7c;
   text-decoration: line-through;
 }
+/* Lit while its objective is pointed at, so the brief and the drawing are one
+   object. Colour and weight only: nothing moves, because the map is read while
+   somebody is reading a list beside it. */
+.mm-brief-lit circle {
+  fill: #d9b26a14;
+  stroke: var(--accent);
+  stroke-dasharray: none;
+}
+.mm-brief-lit .mm-brief-pin {
+  fill: var(--accent);
+}
+.mm-brief-lit text {
+  fill: var(--accent);
+}
 .mm-report rect {
   fill: none;
   stroke: #8fa8bb;
@@ -3152,6 +3166,106 @@ select {
   letter-spacing: 0.06em;
   font-size: 0.82rem;
   color: var(--muted);
+}
+.master-map-brief {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.master-map-brief h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+.master-map-objective {
+  margin: 2px 0 0;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.45rem;
+  line-height: 1.1;
+}
+.master-map-stake {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+.master-map-objectives {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mm-objective {
+  border-left: 2px solid var(--line);
+  padding: 2px 0 2px 9px;
+  cursor: default;
+}
+.mm-objective:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+}
+/* The one the mission is scored on reads louder than the three that only make
+   it cheaper. */
+.mm-objective-scored {
+  border-left-color: var(--accent);
+}
+.mm-objective-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.mm-objective-head strong {
+  font-size: 0.9rem;
+  /* The title never gives way to the readout: a status can wrap, a name
+     broken across three lines cannot be read at a glance. */
+  flex: 0 0 auto;
+}
+.mm-objective-head span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-align: right;
+  flex: 0 1 auto;
+}
+.mm-objective-scored .mm-objective-head span {
+  color: var(--accent);
+}
+.mm-objective p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.mm-objective-mark {
+  font-style: italic;
+  opacity: 0.75;
+}
+.mm-objective-done {
+  border-left-color: #6f8f6a;
+}
+.mm-objective-done .mm-objective-head strong {
+  color: #9ec294;
+}
+.mm-objective-done .mm-objective-head span {
+  color: #9ec294;
+}
+.master-map-clock {
+  margin: 12px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.master-map-deploy {
+  margin-top: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #10190f;
+  font-weight: 600;
 }
 .master-map-compose {
   display: flex;

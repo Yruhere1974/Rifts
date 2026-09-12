@@ -120,6 +120,13 @@ export function App() {
   const { view, seat } = game;
   const [link] = useState(joinLink);
   const [screen, setScreen] = useState<"console" | "map">(initialScreen);
+  /**
+   * True from deploying until the specialist takes their seat. The master map
+   * is the screen you land on, so the brief is read before anything is spent;
+   * it is client state rather than mission state, because a reload mid-mission
+   * should put you back at your console, not back at the briefing.
+   */
+  const [briefing, setBriefing] = useState(false);
   // Selecting an objective means selecting its apparatus: the middle of the
   // room is no longer a place anyone can work from.
   const [selected, setSelected] = useState(hexKey(apparatusOf("relay")));
@@ -376,6 +383,7 @@ export function App() {
               onClick={() => {
                 const next = screen === "map" ? "console" : "map";
                 setScreen(next);
+                if (next === "console") setBriefing(false);
                 const url = new URL(window.location.href);
                 if (next === "map") url.searchParams.set("map", "1");
                 else url.searchParams.delete("map");
@@ -412,7 +420,7 @@ export function App() {
         <Tutorial
           key={game.roomId}
           view={view}
-          active={tutorial}
+          active={tutorial && screen !== "map"}
           guidance={{
             selected: selectedSite ?? "",
             pieces: committed,
@@ -451,6 +459,17 @@ export function App() {
           }
           onErase={(mark) => game.send({ type: "erase", mark })}
           onPing={game.ping}
+          onTakeSeat={
+            briefing
+              ? () => {
+                  setBriefing(false);
+                  setScreen("console");
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete("map");
+                  window.history.replaceState(null, "", url);
+                }
+              : undefined
+          }
         />
       )}
       {/* Kept mounted rather than unmounted: remounting would tear down and
@@ -635,8 +654,8 @@ export function App() {
                 <Flag size={14} />
                 TEAM OBJECTIVE
               </div>
-              <h2>Close the breach.</h2>
-              <p>Keep Greyhaven standing.</p>
+              <h2>{playableMission.objective}</h2>
+              <p>{playableMission.stake}</p>
               <div className="objective-counter">
                 {/* Keyed on the pulse so a gain replays the surge even when the
                   counter is already mid-animation from the previous one. */}
@@ -1281,6 +1300,8 @@ export function App() {
                     setHelp(false);
                     setHistory(false);
                     setRulesOpen(false);
+                    setScreen("map");
+                    setBriefing(true);
                     void game.connect(
                       lobbyMode,
                       lobbyMode === "practice" ? "dice" : lobbySeat,

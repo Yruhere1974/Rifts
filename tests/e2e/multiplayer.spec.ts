@@ -157,6 +157,7 @@ test.fixme("four independent browser seats see one world and different private e
       if (roomCode)
         await page.getByRole("textbox", { name: "Room code" }).fill(roomCode);
       await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+      await page.getByRole("button", { name: "Take your seat" }).click();
       await expect(page.locator(".connection-indicator")).toHaveText(
         "connected",
       );
@@ -335,6 +336,7 @@ test("four tabs in one browser hold four seats, and the table screen stays publi
           .click();
         await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
         await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+        await page.getByRole("button", { name: "Take your seat" }).click();
       }
       await expect(page.locator(".engine-heading .eyebrow")).toBeVisible({
         timeout: 20_000,
@@ -403,6 +405,7 @@ test("the master map is one shared surface, and stays public on a screen", async
           .click();
         await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
         await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+        await page.getByRole("button", { name: "Take your seat" }).click();
       }
       await expect(page.locator(".engine-heading .eyebrow")).toBeVisible({
         timeout: 20_000,
@@ -451,9 +454,12 @@ test("the master map is one shared surface, and stays public on a screen", async
     await expect(table.locator(".table-room strong")).toHaveText(roomCode);
     await table.getByRole("button", { name: "Master map" }).click();
     const shared = table.getByRole("region", { name: "Master map" });
-    await expect(shared.getByText("Relay conduits")).toHaveCount(2, {
-      timeout: 20_000,
-    });
+    await expect(
+      shared.locator(".master-map-canvas").getByText("Relay conduits"),
+    ).toHaveCount(1, { timeout: 20_000 });
+    await expect(
+      shared.locator(".master-map-list").getByText("Relay conduits"),
+    ).toHaveCount(1);
     // Read-only: a screen holds no seat, so it cannot draw, erase or point.
     await expect(shared.locator(".master-map-tools")).toHaveCount(0);
     await expect(shared.locator(".master-map-compose")).toHaveCount(0);

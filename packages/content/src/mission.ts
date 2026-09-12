@@ -4,7 +4,9 @@ export const playableMissionSchema = z
   .strictObject({
     id: z.string().min(1),
     name: z.string().min(1),
+    /** The mission in one line, and what is lost if it fails. */
     objective: z.string().min(1),
+    stake: z.string().min(1),
     requiredProgress: z.literal(24),
     instabilityLimit: z.literal(12),
     roundLimit: z.literal(6),
@@ -63,7 +65,8 @@ export type PlayableMissionDefinition = z.infer<typeof playableMissionSchema>;
 export const playableMission = playableMissionSchema.parse({
   id: "relay-breach",
   name: "Dimensional Stabilizer",
-  objective: "Seal the rift before instability reaches 12.",
+  objective: "Close the breach.",
+  stake: "Keep Greyhaven standing.",
   requiredProgress: 24,
   instabilityLimit: 12,
   roundLimit: 6,

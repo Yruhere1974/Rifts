@@ -25,7 +25,11 @@ Choose **Solo table** to explore all four seats, or **Cooperative table** to cre
 
 ### Master Map
 
-**Master map** in the header opens a separate planning screen, or visit `?map=1`. It shows the outline of the undercroft and nothing else: no apparatus, no patrols, no units. The only things on it are marks somebody put there.
+Deploying opens the **master map**, not the cockpit. It is where the mission is laid out before anything is spent: the brief states what the team is there to do, and the planning window is already open. **Take your seat** moves on to your console, and the mission does not come back here on its own — **Master map** in the header reopens it at any time, or visit `?map=1`.
+
+The brief names four objectives. Only one is scored — 24 stabilization at the breach before the sixth round ends — and the other three are the difference between closing the breach cheaply and not closing it at all. Each one reads live off the same public state the cockpit shows, and each names the briefing mark that claims to say where it is; pointing at an objective lights that mark on the drawing.
+
+Below the brief, the map shows the outline of the undercroft and nothing else: no apparatus, no patrols, no units. The only things on it are marks somebody put there.
 
 The mission places its own, from the briefing. How tightly a mark draws is how sure planning was — a point, a small area, or a soft region. Whether it is _true_ is not shown. Walking a specialist up to a mark settles it: it is confirmed, or struck through because the briefing was wrong. One mark per match is wrong, and which one depends on the table.
 

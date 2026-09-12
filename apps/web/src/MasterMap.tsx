@@ -1,6 +1,12 @@
 import { useMemo, useState, type PointerEvent } from "react";
 import { Crosshair, Eraser, MapPin, Route, Spline } from "lucide-react";
-import { briefingRadius, mapBounds, missionMap } from "@rifts/content";
+import {
+  briefingRadius,
+  mapBounds,
+  missionMap,
+  missionObjectives,
+  playableMission,
+} from "@rifts/content";
 import {
   hexCorners,
   hexKey,
@@ -12,7 +18,9 @@ import {
   type Hex,
 } from "@rifts/shared";
 import {
+  objectiveState,
   routeCost,
+  missionRoundLimit,
   type MapMark,
   type MissionBriefing,
   type MissionEnemy,
@@ -46,6 +54,14 @@ export type MasterMapSurface = {
   briefing: MissionBriefing[];
   reports: { seat: Seat; location: MissionLocation; text: string }[];
   enemies: MissionEnemy[];
+  /** What the brief reads. Every field is already public on both views. */
+  round: number;
+  instability: number;
+  progress: number;
+  requiredProgress: number;
+  shield: boolean;
+  frequencyKnown: boolean;
+  threat: number;
 };
 
 type Mode = "point" | "mark" | "route";
@@ -69,6 +85,7 @@ export function MasterMap({
   onAnnotate,
   onErase,
   onPing,
+  onTakeSeat,
 }: {
   surface: MasterMapSurface;
   seat: Seat | null;
@@ -77,10 +94,14 @@ export function MasterMap({
   onAnnotate: (label: string, hexes: string[]) => void;
   onErase: (mark: string) => void;
   onPing: (hex: string) => void;
+  /** Present only at deployment, when the map is the screen you land on. */
+  onTakeSeat?: (() => void) | undefined;
 }) {
   const [mode, setMode] = useState<Mode>("point");
   const [draft, setDraft] = useState<string[]>([]);
   const [label, setLabel] = useState("");
+  /** The briefing mark an objective is pointing at, while it is hovered. */
+  const [lit, setLit] = useState<string | null>(null);
 
   const geometry = useMemo(() => {
     const hexes = openHexes();
@@ -153,6 +174,9 @@ export function MasterMap({
     }
     return out;
   }, [surface.marks, surface.enemies, size]);
+
+  /** The authored objectives, each answered from public state. */
+  const objectives = useMemo(() => objectiveState(surface), [surface]);
 
   const editable = seat !== null && surface.planning;
 
@@ -283,7 +307,9 @@ export function MasterMap({
               return (
                 <g
                   key={marker.id}
-                  className={`mm-brief mm-brief-${marker.state}`}
+                  className={`mm-brief mm-brief-${marker.state}${
+                    lit === marker.id ? " mm-brief-lit" : ""
+                  }`}
                 >
                   {marker.state === "standing" && (
                     <circle cx={centre.x} cy={centre.y} r={spread} />
@@ -407,6 +433,65 @@ export function MasterMap({
         </svg>
 
         <aside className="master-map-side">
+          <section className="master-map-brief" aria-label="Mission brief">
+            <h3>{playableMission.name}</h3>
+            <p className="master-map-objective">{playableMission.objective}</p>
+            <p className="master-map-stake">{playableMission.stake}</p>
+            <ul className="master-map-objectives">
+              {missionObjectives.map((objective) => {
+                const live = objectives.find(
+                  (entry) => entry.id === objective.id,
+                );
+                const mark = surface.briefing.find(
+                  (entry) => entry.id === objective.marker,
+                );
+                return (
+                  <li
+                    key={objective.id}
+                    className={`mm-objective${objective.scored ? " mm-objective-scored" : ""}${
+                      live?.done ? " mm-objective-done" : ""
+                    }`}
+                    // Pointing at an objective lights the mark that claims to
+                    // locate it, which is the whole tie between brief and map.
+                    onPointerEnter={() => setLit(objective.marker)}
+                    onPointerLeave={() => setLit(null)}
+                    onFocus={() => setLit(objective.marker)}
+                    onBlur={() => setLit(null)}
+                    tabIndex={0}
+                  >
+                    <div className="mm-objective-head">
+                      <strong>{objective.title}</strong>
+                      <span>{live?.readout}</span>
+                    </div>
+                    <p>{objective.detail}</p>
+                    {mark && (
+                      <p className="mm-objective-mark">
+                        {mark.state === "struck"
+                          ? `The briefing was wrong about ${mark.label.toLowerCase()}.`
+                          : mark.state === "confirmed"
+                            ? `Confirmed on the map: ${mark.label.toLowerCase()}.`
+                            : `Briefing places this ${mark.precision === "known" ? "exactly" : mark.precision === "inferred" ? "roughly" : "somewhere"}: ${mark.label.toLowerCase()}.`}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="master-map-clock">
+              Round {surface.round} of {missionRoundLimit} · instability{" "}
+              {surface.instability} of {playableMission.instabilityLimit}
+            </p>
+            {onTakeSeat && (
+              <button
+                type="button"
+                className="master-map-deploy"
+                onClick={onTakeSeat}
+              >
+                Take your seat
+              </button>
+            )}
+          </section>
+
           {seat !== null && surface.planning && (
             <form
               className="master-map-compose"
@@ -463,7 +548,7 @@ export function MasterMap({
             </form>
           )}
 
-          <h3>Briefing</h3>
+          <h3>Briefing marks</h3>
           <ul className="master-map-list">
             {surface.briefing.map((marker) => (
               <li key={marker.id} className={`mm-row mm-row-${marker.state}`}>

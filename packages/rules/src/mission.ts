@@ -1,5 +1,6 @@
 import {
   briefingMarkers,
+  missionObjectives,
   missionMap,
   playableMission,
   specialistFor,
@@ -528,6 +529,59 @@ export function falseMarkerFor(seed: number): string | null {
  * still at one hex, and somebody has to stand beside it.
  */
 export const briefingReach = (size: number): number => size + 1;
+export type ObjectiveState = {
+  id: string;
+  done: boolean;
+  /** What the objective reads right now, short enough to sit on one line. */
+  readout: string;
+};
+/**
+ * How the authored objectives currently stand. Every one of them is already
+ * answered by public mission state, so the brief is a live checklist rather
+ * than a document, and nothing extra is stored to keep it true. The measure
+ * is authored in `packages/content`, so this reads a signal it understands
+ * rather than matching on objective ids.
+ */
+export function objectiveState(state: {
+  progress: number;
+  requiredProgress: number;
+  shield: boolean;
+  frequencyKnown: boolean;
+  threat: number;
+}): ObjectiveState[] {
+  return missionObjectives.map((objective) => {
+    const id = objective.id;
+    switch (objective.measure) {
+      case "progress":
+        return {
+          id,
+          done: state.progress >= state.requiredProgress,
+          readout: `${state.progress} / ${state.requiredProgress} stabilization`,
+        };
+      case "shield":
+        return {
+          id,
+          done: !state.shield,
+          readout: state.shield ? "Shield holding" : "Output doubled",
+        };
+      case "frequency":
+        return {
+          id,
+          done: state.frequencyKnown,
+          readout: state.frequencyKnown ? "Timing known" : "Timing unknown",
+        };
+      case "threat":
+        return {
+          id,
+          done: state.threat === 0,
+          readout:
+            state.threat === 0
+              ? "Gate clear"
+              : `Patrol strength ${state.threat}`,
+        };
+    }
+  });
+}
 /**
  * Walking into a claim settles it. A standing mark becomes confirmed, or
  * struck when it was this match's false one; a struck mark is kept and drawn

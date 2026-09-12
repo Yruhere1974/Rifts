@@ -6,6 +6,8 @@ async function deploy(page: Page, tutorial = false) {
   if (tutorial)
     await page.getByRole("checkbox", { name: "Guided tutorial" }).check();
   await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+  // Deployment lands on the mission brief, not in the cockpit.
+  await page.getByRole("button", { name: "Take your seat" }).click();
   await expect(page.locator(".die")).toHaveCount(5);
 }
 async function seat(page: Page, name: string) {
@@ -137,6 +139,7 @@ test("tutorial can pause, resume, skip and restart on a new mobile table", async
   await page.getByRole("button", { name: "Skip lesson" }).click();
   await page.getByRole("button", { name: "Leave table" }).click();
   await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+  await page.getByRole("button", { name: "Take your seat" }).click();
   await expect(page.locator(".tutorial-copy h2")).toHaveText(
     "One crisis, four perspectives",
   );
@@ -440,8 +443,14 @@ test("the master map carries the briefing and the team's own marks", async ({
   expect(page.url()).toContain("map=1");
 
   // The mission's own marks are there before anyone has drawn anything, on
-  // the drawing and in the list beside it.
-  await expect(map.getByText("Relay conduits")).toHaveCount(2);
+  // the drawing and in the briefing-marks list beside it. Scoped to each,
+  // because the brief above them names its marks a third time.
+  await expect(
+    map.locator(".master-map-canvas").getByText("Relay conduits"),
+  ).toHaveCount(1);
+  await expect(
+    map.locator(".master-map-list").getByText("Relay conduits"),
+  ).toHaveCount(1);
   await expect(map.getByText("Nothing drawn yet.")).toBeVisible();
 
   // Ground is one silhouette: no apparatus, no patrols, no units.
@@ -485,4 +494,47 @@ test("ink belongs to the planning window, and pointing does not", async ({
   ).toBeDisabled();
   // Pointing is never a commitment, so it stays available all round.
   await expect(map.getByRole("button", { name: "Point" })).toBeEnabled();
+});
+
+test("deployment opens on the brief, which lays out the objectives", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+
+  // The map is the screen you land on: the brief is read before anything is
+  // spent, and the console is not on the page yet.
+  const map = page.getByRole("region", { name: "Master map" });
+  await expect(map).toBeVisible();
+  await expect(page.locator(".cockpit")).toBeHidden();
+
+  const brief = page.getByRole("region", { name: "Mission brief" });
+  await expect(brief.locator(".master-map-objective")).toHaveText(
+    "Close the breach.",
+  );
+  // Four objectives, exactly one of which the mission is scored on.
+  await expect(brief.locator(".mm-objective")).toHaveCount(4);
+  await expect(brief.locator(".mm-objective-scored")).toHaveCount(1);
+  await expect(brief.getByText("0 / 24 stabilization")).toBeVisible();
+  await expect(brief.getByText(/Round 1 of 6/)).toBeVisible();
+
+  // The brief is a live checklist, not a document: it reads the same public
+  // state the cockpit does, so nothing here is met at deployment.
+  await expect(brief.locator(".mm-objective-done")).toHaveCount(0);
+  await expect(brief.getByText("Shield holding")).toBeVisible();
+
+  // Each objective names the mark that claims to locate it.
+  await expect(
+    brief.getByText(/Briefing places this roughly: breach, east chamber/i),
+  ).toBeVisible();
+
+  // Taking the seat leaves the brief behind for the rest of the mission.
+  await page.getByRole("button", { name: "Take your seat" }).click();
+  await expect(page.locator(".die")).toHaveCount(5);
+  await expect(map).toBeHidden();
+  await page.getByRole("button", { name: "Master map" }).click();
+  await expect(map).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Take your seat" }),
+  ).toHaveCount(0);
 });

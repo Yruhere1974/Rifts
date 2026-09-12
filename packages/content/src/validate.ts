@@ -7,6 +7,8 @@ import {
   specialistsSchema,
   briefingMarkers,
   briefingMarkersSchema,
+  missionObjectives,
+  missionObjectivesSchema,
 } from "./index.js";
 
 const result = scenarioSchema.safeParse(prototypeScenario);
@@ -22,6 +24,10 @@ console.log(`Validated playable mission: ${playableMission.id}`);
 specialistsSchema.parse(specialists);
 console.log(
   `Validated specialists: ${specialists.map((s) => `${s.className} (${s.family})`).join(", ")}`,
+);
+missionObjectivesSchema.parse(missionObjectives);
+console.log(
+  `Validated objectives: ${missionObjectives.map((o) => o.title).join(", ")}`,
 );
 briefingMarkersSchema.parse(briefingMarkers);
 console.log(

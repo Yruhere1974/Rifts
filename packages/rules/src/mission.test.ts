@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { missionMap } from "@rifts/content";
+import { missionMap, missionObjectives } from "@rifts/content";
 import {
   hexDistance,
   hexKey,
@@ -26,6 +26,7 @@ import {
   reachable,
   routingCapacity,
   routeCost,
+  objectiveState,
   siteAt,
   tableView,
   type GlitterFacet,
@@ -1401,5 +1402,44 @@ describe("master map", () => {
     const clear = routeCost([from, gate], 1, []);
     expect(clear.blocked).toBe(false);
     expect(guarded.blocked).toBe(true);
+  });
+
+  it("reads every objective off public state, and only one is scored", () => {
+    const state = createMission(1);
+    const at = (s: typeof state) =>
+      new Map(objectiveState(s).map((entry) => [entry.id, entry]));
+
+    const start = at(state);
+    expect(start.size).toBe(missionObjectives.length);
+    expect(missionObjectives.filter((o) => o.scored)).toHaveLength(1);
+    // Nothing is met at deployment, and each objective says why.
+    expect([...start.values()].every((entry) => !entry.done)).toBe(true);
+    expect(start.get("close-the-breach")?.readout).toBe(
+      `0 / ${state.requiredProgress} stabilization`,
+    );
+    expect(start.get("restore-the-relay")?.readout).toMatch(/shield holding/i);
+    expect(start.get("decode-the-timing")?.readout).toMatch(/unknown/i);
+    expect(start.get("clear-the-west-gate")?.readout).toMatch(
+      /patrol strength/i,
+    );
+
+    // Each one flips from the public signal its content authored, so the
+    // brief needs nothing stored to stay true.
+    const met = at({
+      ...state,
+      progress: state.requiredProgress,
+      shield: false,
+      frequencyKnown: true,
+      threat: 0,
+    });
+    expect([...met.values()].every((entry) => entry.done)).toBe(true);
+    expect(met.get("clear-the-west-gate")?.readout).toMatch(/gate clear/i);
+  });
+
+  it("points every objective at a briefing mark that exists", () => {
+    const state = createMission(1);
+    const marks = new Set(state.briefing.map((marker) => marker.id));
+    for (const objective of missionObjectives)
+      expect(marks.has(objective.marker)).toBe(true);
   });
 });

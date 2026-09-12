@@ -12,6 +12,7 @@ import {
   HandHelping,
   Hexagon,
   LockKeyhole,
+  Map,
   MapPin,
   Pause,
   Radio,
@@ -28,15 +29,21 @@ import {
 import {
   previewAction,
   engineTier,
+  facetForAction,
+  objectsBeside,
+  reachable,
+  siteAt,
   hasReports,
   worldPressure,
   type MissionCommand,
   type Seat,
-  type MissionLocation,
 } from "@rifts/rules";
-import { playableMission } from "@rifts/content";
+import { missionMap, playableMission, specialistFor } from "@rifts/content";
+import { MasterMap } from "./MasterMap.js";
+import { hexDistance, hexKey, parseHex } from "@rifts/shared";
 import { BoardCanvas } from "./BoardCanvas.js";
 import { EngineConsole, identities } from "./EngineConsole.js";
+import { staggerDelay, useArrivals, usePrevious, usePulse } from "./motion.js";
 import { useMission } from "./useMission.js";
 import { useModalFocus } from "./useModalFocus.js";
 import { Tutorial } from "./Tutorial.js";
@@ -88,6 +95,17 @@ const actions: { id: Action; label: string; icon: typeof Zap }[] = [
   { id: "recover", label: "Recover", icon: Activity },
 ];
 
+/** The first piece of apparatus at a site, which is what selecting it means. */
+const apparatusOf = (site: string) =>
+  missionMap.objects.find((object) => object.site === site)?.hex ??
+  missionMap.sites.relay;
+
+/** The master map is its own screen, and a linkable one. */
+const initialScreen = (): "console" | "map" =>
+  new URLSearchParams(window.location.search).get("map") === "1"
+    ? "map"
+    : "console";
+
 const joinLink = (): { room: string; seat: Seat } | null => {
   const params = new URLSearchParams(window.location.search);
   const room = params.get("room");
@@ -101,10 +119,17 @@ export function App() {
   const game = useMission();
   const { view, seat } = game;
   const [link] = useState(joinLink);
-  const [selected, setSelected] = useState("relay");
+  const [screen, setScreen] = useState<"console" | "map">(initialScreen);
+  // Selecting an objective means selecting its apparatus: the middle of the
+  // room is no longer a place anyone can work from.
+  const [selected, setSelected] = useState(hexKey(apparatusOf("relay")));
+  const selectedSite = siteAt(parseHex(selected) ?? apparatusOf("relay"), 0);
   const [pieces, setPieces] = useState<string[]>([]);
+  // Which socket on the Techno-Wizard's frame the next placement builds into.
+  const [socket, setSocket] = useState<number | null>(null);
   const [action, setAction] = useState<Action>("contribute");
   const [ally, setAlly] = useState<Seat>("systems");
+  const [foe, setFoe] = useState("");
   const [resource, setResource] = useState("power");
   const [lobbyMode, setLobbyMode] = useState<"practice" | "team">(
     link ? "team" : "practice",
@@ -147,32 +172,130 @@ export function App() {
     void connect("team", link.seat, link.room);
   }, [link, connect]);
   const identity = identities[seat];
+  // The shared sidebar only ever receives whole snapshots, so it diffs the few
+  // values the rules actually care about and replays a one-shot cue on each.
+  // Every diff is taken against `view` rather than the value alone: joining a
+  // table in progress is not the team gaining ground, and must stay silent.
+  const progress = view?.progress ?? 0;
+  const previousProgress = usePrevious(view ? progress : undefined);
+  // The first cell of a gain, and the anchor for its left-to-right cascade.
+  const progressFrom =
+    previousProgress !== undefined && progress > previousProgress
+      ? previousProgress
+      : progress;
+  const progressPulse = usePulse(progress);
+  const instability = view?.instability ?? 0;
+  const previousInstability = usePrevious(view ? instability : undefined);
+  const escalating =
+    previousInstability !== undefined && instability > previousInstability;
+  const instabilityPulse = usePulse(instability);
+  const round = view?.round ?? 1;
+  const previousRound = usePrevious(view ? round : undefined);
+  const roundTurned = previousRound !== undefined && round !== previousRound;
+  const roundPulse = usePulse(round);
+  // Traffic on the team channel and support landing on a seat: both are things
+  // a teammate did to you, so they arrive rather than simply appear.
+  const commsIds = [
+    ...(view?.requests.map((entry) => `request:${entry.seat}`) ?? []),
+    ...(view?.reports.map(
+      (entry) => `report:${entry.seat}-${entry.location}`,
+    ) ?? []),
+  ];
+  const commsArrivals = useArrivals(commsIds);
+  const boostArrivals = useArrivals(
+    seats
+      .filter((role) => (view?.boosts[role] ?? 0) > 0)
+      .map((role) => `${role}:${view?.boosts[role] ?? 0}`),
+  );
+  const freshComms = commsIds.filter((id) => commsArrivals.has(id));
+  const arrived = (id: string) => commsArrivals.has(id);
+  // Cascade only across the entries that landed together, so a long feed never
+  // delays a single new report by its position in the list.
+  const arrivalDelay = (id: string): CSSProperties | undefined =>
+    arrived(id)
+      ? ({
+          "--motion-delay": `${staggerDelay(freshComms.indexOf(id))}ms`,
+        } as CSSProperties)
+      : undefined;
   const recipient = ally === seat ? seats.find((s) => s !== seat)! : ally;
   const pressure = worldPressure(view?.round ?? 1, view?.threat ?? 3);
   const tier = engineTier(view?.round ?? 1);
   const location =
-    locations.find((item) => item.id === selected) ?? locations[1]!;
+    locations.find((item) => item.id === selectedSite) ?? locations[1]!;
   const player = view?.players.find((item) => item.seat === seat);
   // A surge is spent whole, so the Juicer never selects part of it.
+  // Being in the room is no longer enough; you have to be beside something.
+  const beside =
+    view && player ? objectsBeside(player.position, player.size) : [];
+  const facet = facetForAction[action];
   const committed =
-    seat === "bag" ? (view?.engine.pending.map((t) => t.id) ?? []) : pieces;
+    seat === "bag"
+      ? (view?.engine.pending.map((t) => t.id) ?? [])
+      : seat === "dice" && facet
+        ? (view?.engine.dice ?? [])
+            .filter(
+              (die) =>
+                die.facet === facet ||
+                (action === "engage" &&
+                  (die.facet === "boom" || die.facet === "bracing")),
+            )
+            .map((die) => die.id)
+        : pieces;
+  const inReach = (view?.enemies ?? []).filter(
+    (enemy) =>
+      player && hexDistance(player.position, enemy.position) <= player.size + 1,
+  );
+  const quarry = inReach.find((enemy) => enemy.id === foe) ?? inReach[0];
   const command: MissionCommand = {
     type: "act",
     action,
     target:
-      action === "assist"
-        ? recipient
-        : action === "acquire"
-          ? resource
-          : action === "recover"
-            ? seat
-            : selected,
+      action === "engage"
+        ? (quarry?.id ?? "")
+        : action === "assist"
+          ? recipient
+          : action === "acquire"
+            ? resource
+            : action === "recover"
+              ? seat
+              : action === "move"
+                ? selected
+                : (selectedSite ?? ""),
     pieces: committed,
+    ...(socket === null ? {} : { socket }),
   };
   const preview = view ? previewAction(view, command) : null;
+  // Where this commitment could carry the unit. The compiler memoizes this;
+  // it only recomputes when the staged move actually changes.
+  const moveReach = ((): ReadonlySet<string> | undefined => {
+    const me = view?.players.find((entry) => entry.seat === seat);
+    if (!view || !me || action !== "move" || !preview?.range) return undefined;
+    const others = view.players.filter((entry) => entry.seat !== seat);
+    const keys = new Set<string>();
+    for (const [key] of reachable(
+      me.position,
+      me.size,
+      preview.range,
+      view.enemies,
+    )) {
+      const hex = parseHex(key);
+      if (
+        hex &&
+        !others.some(
+          (other) => hexDistance(hex, other.position) <= me.size + other.size,
+        )
+      )
+        keys.add(key);
+    }
+    return keys;
+  })();
   const send = (input: MissionCommand) => {
     game.send(input);
+    // Holding a piece back does not spend anything, so it must not tear down
+    // the weave, surge or placement the player is part way through staging.
+    if (input.type === "keep") return;
     setPieces([]);
+    setSocket(null);
   };
   const changeSeat = (next: Seat) => {
     game.switchSeat(next);
@@ -242,8 +365,28 @@ export function App() {
               title="Open the shared table screen"
             >
               <Tv size={14} />
-              Table screen
+              <span className="control-label">Table screen</span>
             </a>
+          )}
+          {view && (
+            <button
+              className="table-link"
+              aria-pressed={screen === "map"}
+              title="Master map"
+              onClick={() => {
+                const next = screen === "map" ? "console" : "map";
+                setScreen(next);
+                const url = new URL(window.location.href);
+                if (next === "map") url.searchParams.set("map", "1");
+                else url.searchParams.delete("map");
+                window.history.replaceState(null, "", url);
+              }}
+            >
+              <Map size={14} />
+              <span className="control-label">
+                {screen === "map" ? "Console" : "Master map"}
+              </span>
+            </button>
           )}
           <button
             className="icon-button"
@@ -271,8 +414,10 @@ export function App() {
           view={view}
           active={tutorial}
           guidance={{
-            selected,
+            selected: selectedSite ?? "",
             pieces: committed,
+            staged: pieces,
+            socket,
             action,
             recipient,
             artifactOpen: artifact,
@@ -295,514 +440,662 @@ export function App() {
               : `${game.onlineSeats.length} / 4 specialists connected. Share this room code to assemble the team: ${game.roomId}`}
           </div>
         )}
-      <div className="world-layout">
-        <section className="world" aria-label="Shared world">
-          <div className="world-topline">
-            <span className="live-dot" />
-            <span>GREYHAVEN OUTSKIRTS</span>
-            <span className="world-coordinate">SECTOR 07 / 34.8 N</span>
-          </div>
-          <div className="round-strip">
-            <div>
-              <span className="eyebrow">TEAM ROUND</span>
-              <strong>{String(view?.round ?? 1).padStart(2, "0")}</strong>
+      {view && screen === "map" && (
+        <MasterMap
+          surface={view}
+          seat={seat}
+          size={view.players.find((p) => p.seat === seat)?.size ?? 1}
+          pings={game.pings}
+          onAnnotate={(label, hexes) =>
+            game.send({ type: "annotate", label, hexes })
+          }
+          onErase={(mark) => game.send({ type: "erase", mark })}
+          onPing={game.ping}
+        />
+      )}
+      {/* Kept mounted rather than unmounted: remounting would tear down and
+          rebuild the board's WebGL context every time the map is opened. */}
+      <div className="cockpit" hidden={view !== null && screen === "map"}>
+        <div className="world-layout">
+          <section className="world" aria-label="Shared world">
+            <div className="world-topline">
+              <span className="live-dot" />
+              <span>GREYHAVEN OUTSKIRTS</span>
+              <span className="world-coordinate">SECTOR 07 / 34.8 N</span>
             </div>
-            <span className="phase-tag">
-              {view?.phase === "action" || !view
-                ? "OPEN OPPORTUNITIES"
-                : "OPERATION COMPLETE"}
-            </span>
-          </div>
-          <div className="map-surface">
-            <BoardCanvas
-              view={view}
-              selected={selected}
-              onSelect={setSelected}
-            />
-            <div className="map-labels">
-              {locations.map((item) => (
-                <button
-                  key={item.id}
-                  className={`location-pin ${selected === item.id ? "selected" : ""} ${item.id}`}
-                  style={{ left: `${item.x}%`, top: `${item.y}%` }}
-                  onClick={() => setSelected(item.id)}
-                  aria-pressed={selected === item.id}
-                  aria-label={item.name}
-                >
-                  <span className="pin-icon">
-                    <item.icon size={18} />
-                  </span>
-                  <strong>{item.name}</strong>
-                  <small>
-                    {item.id === "gate"
-                      ? `${view?.threat ?? 3} patrol strength`
-                      : item.id === "rift"
-                        ? `${view?.progress ?? 0} / ${view?.requiredProgress ?? playableMission.requiredProgress} stabilization`
-                        : item.subtitle}
-                  </small>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="map-legend">
-            <span>
-              <i className="legend-dot teal" />
-              Crew position
-            </span>
-            <span>
-              <i className="legend-dot red" />
-              Active threat
-            </span>
-            <span>
-              <LockKeyhole size={12} />
-              Private perception
-            </span>
-          </div>
-          <div className="location-inspector">
-            <div className="location-title">
-              <location.icon size={22} />
+            <div className="round-strip">
               <div>
-                <span className="eyebrow">SELECTED LOCATION</span>
-                <h2>{location.name}</h2>
+                <span className="eyebrow">TEAM ROUND</span>
+                <strong>{String(view?.round ?? 1).padStart(2, "0")}</strong>
               </div>
-              <span className="location-presence">
-                {player?.location === selected ? "You are here" : "Remote"}
+              <span className="phase-tag">
+                {view?.phase === "action" || !view
+                  ? "OPEN OPPORTUNITIES"
+                  : "OPERATION COMPLETE"}
               </span>
             </div>
-            <p>
-              {selected === "rift"
-                ? view?.frequencyKnown
-                  ? "Frequency triangulated. Stabilization is safe. Each contribution consumes 1 shared Power."
-                  : "Uncertain timing: blind stabilization adds 5 instability. Combine independent readings or investigate before committing."
-                : selected === "gate"
-                  ? "The patrol adds +1 instability at each world response. Engage at the gate to remove its strength."
-                  : selected === "archive"
-                    ? "Investigate the records for Knowledge and safe breach timing. A known route through the noise."
-                    : "An engine commitment and 2 shared Power restore the relay. Removing the shield doubles stabilization output."}
-            </p>
-            <div className="location-facts">
-              <span>
-                {view?.shield ? <Shield size={14} /> : <Check size={14} />}
-                {view?.shield ? "Breach shield active" : "Shield suppressed"}
-              </span>
-              <span>
-                <Radio size={14} />
-                {view?.frequencyKnown
-                  ? "Safe frequency known"
-                  : "Frequency uncertain"}
-              </span>
-            </div>
-            {view && (
-              <section
-                className="location-perception"
-                aria-label="Private location assessment"
-              >
-                <div className="section-label">
-                  <LockKeyhole size={14} /> {identity.title} / PRIVATE
-                  ASSESSMENT
-                </div>
-                {view.perceptions
-                  .filter((reading) => reading.location === selected)
-                  .map((reading) => (
-                    <div
-                      className={`intel ${reading.status}`}
-                      key={reading.location}
-                    >
-                      <span>{reading.status}</span>
-                      <p>{reading.text}</p>
-                    </div>
-                  ))}
-                <p className="muted">
-                  Other specialists' unshared assessments are hidden.
-                </p>
-                <button
-                  className="text-button"
-                  disabled={
-                    view.phase !== "action" ||
-                    view.reports.some(
-                      (r) => r.seat === seat && r.location === selected,
-                    )
-                  }
-                  onClick={() =>
-                    send({ type: "share", target: selected as MissionLocation })
-                  }
-                >
-                  <Send size={14} />{" "}
-                  {view.reports.some(
-                    (r) => r.seat === seat && r.location === selected,
-                  )
-                    ? "Location assessment shared"
-                    : "Share location assessment"}
-                </button>
-                {selected === "gate" &&
-                  hasReports(view, "gate", ["dice", "bag"]) && (
-                    <p className="discovery-note">
-                      PATROL WEAKNESS /{" "}
-                      {view.discoveries.flankUsed
-                        ? "Opening spent"
-                        : "Next Engage at West gate gains +1 effect. Any specialist can exploit it."}
-                    </p>
-                  )}
-                {selected === "archive" &&
-                  hasReports(view, "archive", ["bag", "systems"]) && (
-                    <p className="discovery-note">
-                      POWER CACHE /{" "}
-                      {view.discoveries.cacheUsed
-                        ? "Cache recovered"
-                        : "Investigate here with engine pieces to recover +2 shared Power, once only."}
-                    </p>
-                  )}
-              </section>
-            )}
-          </div>
-        </section>
-        <aside className="team-sidebar" aria-label="Shared mission state">
-          <section className="objective-section">
-            <div className="section-label">
-              <Flag size={14} />
-              TEAM OBJECTIVE
-            </div>
-            <h2>Close the breach.</h2>
-            <p>Keep Greyhaven standing.</p>
-            <div className="objective-counter">
-              <strong>
-                {view?.progress ?? 0}
-                <small>
-                  {" "}
-                  / {view?.requiredProgress ?? playableMission.requiredProgress}
-                </small>
-              </strong>
-              <span>STABILIZATION</span>
-            </div>
-            <div className="segmented-track">
-              {Array.from(
-                {
-                  length:
-                    view?.requiredProgress ?? playableMission.requiredProgress,
-                },
-                (_, i) => (
-                  <i
-                    key={i}
-                    className={i < (view?.progress ?? 0) ? "filled" : ""}
-                  />
-                ),
-              )}
-            </div>
-          </section>
-          <section className="pressure-section">
-            <div className="section-label">
-              <Activity size={14} />
-              INSTABILITY<strong>{view?.instability ?? 0} / 12</strong>
-            </div>
-            <div className="segmented-track danger">
-              {Array.from({ length: 12 }, (_, i) => (
-                <i
-                  key={i}
-                  className={i < (view?.instability ?? 0) ? "filled" : ""}
-                />
-              ))}
-            </div>
-            <p>At 12, Greyhaven falls. Six rounds remain at deployment.</p>
-            <div className="world-response">
-              <span>NEXT WORLD RESPONSE</span>
-              <strong>
-                +{pressure} instability
-                {view?.round === 6 ? " / final surge" : ""}
-              </strong>
-              <small>
-                Breach surge
-                {(view?.threat ?? 3) > 0 ? " + active patrol" : " only"}. All
-                four must finish.
-              </small>
-            </div>
-          </section>
-          <section className="resources-section">
-            <div className="section-label">SHARED RESERVES</div>
-            <div className="resource-pool">
-              {(
-                [
-                  ["materiel", Diamond],
-                  ["power", Zap],
-                  ["knowledge", BookOpen],
-                  ["influence", Flag],
-                ] as const
-              ).map(([key, Icon]) => (
-                <div key={key} title={key}>
-                  <Icon size={17} />
-                  <strong>{view?.resources[key] ?? 0}</strong>
-                  <span>{key}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-          <section className="comms-section">
-            <div className="section-label">
-              <Radio size={14} />
-              TEAM CHANNEL
-            </div>
-            <div className="comms-feed" aria-live="polite">
-              {view?.requests.map((request) => (
-                <button
-                  className="assist-request"
-                  key={request.seat}
-                  onClick={() => {
-                    setAlly(request.seat);
-                    setAction("assist");
-                  }}
-                >
-                  <HandHelping size={17} />
-                  <span>
-                    <strong>
-                      {identities[request.seat].title} needs support
-                    </strong>
-                    <small>{request.target} / spend capability to help</small>
-                  </span>
-                  <ChevronRight size={15} />
-                </button>
-              ))}
-              {view?.reports.map((report) => (
-                <div
-                  className="report"
-                  key={`${report.seat}-${report.location}`}
-                >
-                  <span style={{ color: identities[report.seat].color }}>
-                    {identities[report.seat].title} /{" "}
-                    {locations.find((l) => l.id === report.location)?.name} /
-                    SHARED
-                  </span>
-                  <p>{report.text}</p>
-                </div>
-              ))}
-              {!view?.reports.length && (
-                <p className="muted">No readings shared yet.</p>
-              )}
-            </div>
-          </section>
-        </aside>
-      </div>
-      <section className="player-area" aria-label="Character console">
-        <nav className="crew-bar" aria-label="Crew seats">
-          {seats.map((role) => {
-            const member = view?.players.find((p) => p.seat === role);
-            const id = identities[role];
-            return (
-              <button
-                key={role}
-                style={{ "--crew-color": id.color } as CSSProperties}
-                className={`crew-seat ${seat === role ? "active" : ""}`}
-                data-tutorial-seat={role}
-                onClick={() => game.mode === "practice" && changeSeat(role)}
-                aria-pressed={seat === role}
-                disabled={game.mode === "team" && seat !== role}
-              >
-                <id.icon size={22} />
-                <span>
-                  <strong>{id.title}</strong>
-                  <small>
-                    {id.family} / {id.engine}
-                  </small>
-                </span>
-                <span className="crew-state">
-                  {game.mode === "team" && !game.onlineSeats.includes(role)
-                    ? "OFFLINE"
-                    : member?.ready
-                      ? "FINISHED"
-                      : member?.holding
-                        ? "HOLDING"
-                        : (view?.boosts[role] ?? 0) > 0
-                          ? `+${view?.boosts[role]} SUPPORT`
-                          : "AVAILABLE"}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-        {view && (
-          <div className="console-layout">
-            <div className="engine-section">
-              <div className="engine-heading">
-                <div>
-                  <span className="eyebrow">
-                    {identity.title} /{" "}
-                    {locations.find((l) => l.id === player?.location)?.name}
-                  </span>
-                  <h2>{identity.engine}</h2>
-                </div>
-                <span className="component-count">
-                  {player?.upgraded ? "ENHANCED" : "STANDARD KIT"}
-                  {tier > 0 ? ` / TIER ${tier}` : ""}
-                </span>
-                <button
-                  className="icon-button"
-                  aria-label={`${identity.title} rules reference`}
-                  title={`${identity.title} rules reference`}
-                  onClick={() => setRulesOpen(true)}
-                >
-                  <CircleHelp size={20} />
-                </button>
-              </div>
-              <EngineConsole
+            <div className="map-surface">
+              <BoardCanvas
                 view={view}
-                selected={pieces}
-                onSelect={selectPiece}
-                onDraw={() => send({ type: "draw" })}
-                onAction={setAction}
+                selected={selected}
+                onSelect={setSelected}
+                reachable={moveReach}
+                focus={
+                  player
+                    ? { centre: player.position, radius: player.size + 7 }
+                    : undefined
+                }
               />
-              <div className="engine-footer">
-                <button
-                  className={`text-button ${player?.holding ? "highlight" : ""}`}
-                  data-tutorial="hold"
-                  onClick={() => send({ type: "hold" })}
-                  disabled={player?.ready || view.phase !== "action"}
-                >
-                  <Pause size={14} />
-                  {player?.holding ? "Capability held" : "Hold capability"}
-                </button>
-                <button
-                  className="text-button"
-                  onClick={() => setArtifact(true)}
-                  data-tutorial="core"
-                >
-                  <Diamond size={14} />
-                  {view.artifact
-                    ? "Unclaimed power core"
-                    : player?.upgraded
-                      ? "Upgrade installed"
-                      : "Core donated"}
-                </button>
-              </div>
-            </div>
-            <div className="action-section">
-              <div className="section-label">COMMIT TO THE SHARED WORLD</div>
-              <div className="action-slots">
-                {actions.map((item) => (
+              <div className="map-labels">
+                {locations.map((item) => (
                   <button
                     key={item.id}
-                    className={action === item.id ? "selected" : ""}
-                    onClick={() => setAction(item.id)}
-                    aria-pressed={action === item.id}
-                    title={item.label}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const piece = event.dataTransfer.getData("text/plain");
-                      if (piece) setPieces([piece]);
-                      setAction(item.id);
-                    }}
+                    className={`location-pin ${selectedSite === item.id ? "selected" : ""} ${item.id}`}
+                    onClick={() => setSelected(hexKey(apparatusOf(item.id)))}
+                    aria-pressed={selectedSite === item.id}
+                    aria-label={item.name}
                   >
-                    <item.icon size={18} />
-                    <span>{item.label}</span>
+                    <span className="pin-icon">
+                      <item.icon size={18} />
+                    </span>
+                    <strong>{item.name}</strong>
+                    <small>
+                      {item.id === "gate"
+                        ? `${view?.threat ?? 3} patrol strength`
+                        : item.id === "rift"
+                          ? `${view?.progress ?? 0} / ${view?.requiredProgress ?? playableMission.requiredProgress} stabilization`
+                          : item.subtitle}
+                    </small>
                   </button>
                 ))}
               </div>
-              <div className="target-line">
-                <span>TARGET</span>
-                {action === "assist" ? (
-                  <select
-                    aria-label="Assistance recipient"
-                    value={recipient}
-                    onChange={(event) => setAlly(event.target.value as Seat)}
-                  >
-                    {seats
-                      .filter((s) => s !== seat)
-                      .map((s) => (
-                        <option key={s} value={s}>
-                          {identities[s].title}
-                        </option>
-                      ))}
-                  </select>
-                ) : action === "acquire" ? (
-                  <select
-                    aria-label="Resource to acquire"
-                    value={resource}
-                    onChange={(e) => setResource(e.target.value)}
-                  >
-                    {["power", "materiel", "knowledge", "influence"].map(
-                      (r) => (
-                        <option key={r}>{r}</option>
-                      ),
-                    )}
-                  </select>
-                ) : (
-                  <strong>
-                    {action === "recover" ? identity.title : location.name}
-                  </strong>
-                )}
-                <button
-                  className="text-button"
-                  onClick={() => send({ type: "request", target: selected })}
-                  data-tutorial="request"
-                >
-                  <Radio size={13} />
-                  Request help
-                </button>
-              </div>
-              <div className="action-preview" aria-live="polite">
-                <span>{preview?.cost || "No components committed"}</span>
-                <p>{preview?.allowed ? preview.effect : preview?.reason}</p>
-              </div>
-              <div className="commit-row">
-                <button
-                  className="primary-button"
-                  disabled={
-                    !preview?.allowed ||
-                    view.phase !== "action" ||
-                    !game.started
-                  }
-                  onClick={() => send(command)}
-                  data-tutorial="commit"
-                >
-                  Commit {action}
-                  <ArrowRight size={17} />
-                </button>
-                <button
-                  className="finish-button"
-                  disabled={
-                    player?.ready || view.phase !== "action" || !game.started
-                  }
-                  onClick={() => setFinishing(true)}
-                >
-                  <Check size={16} />
-                  {player?.ready ? "Round finished" : "Finish round"}
-                </button>
-              </div>
             </div>
-            <aside className="private-section">
-              <div className="section-label">
-                <LockKeyhole size={13} />
-                YOUR PERCEPTION
-              </div>
-              {view.intel.map((intel, index) => (
-                <div className={`intel ${intel.status}`} key={index}>
-                  <span>{intel.status}</span>
-                  <p>{intel.text}</p>
+            <div className="map-legend">
+              <span>
+                <i className="legend-dot teal" />
+                Crew position
+              </span>
+              <span>
+                <i className="legend-dot red" />
+                Active threat
+              </span>
+              <span>
+                <LockKeyhole size={12} />
+                Private perception
+              </span>
+            </div>
+            <div className="location-inspector">
+              <div className="location-title">
+                <location.icon size={22} />
+                <div>
+                  <span className="eyebrow">SELECTED LOCATION</span>
+                  <h2>{location.name}</h2>
                 </div>
-              ))}
-              <button
-                className="text-button share-button"
-                onClick={() => send({ type: "share" })}
-                disabled={
-                  view.phase !== "action" ||
-                  view.reports.some(
+                <span className="location-presence">
+                  {player?.location === selectedSite
+                    ? "You are here"
+                    : "Remote"}
+                </span>
+              </div>
+              <p>
+                {selectedSite === "rift"
+                  ? view?.frequencyKnown
+                    ? "Frequency triangulated. Stabilization is safe. Each contribution consumes 1 shared Power."
+                    : "Uncertain timing: blind stabilization adds 5 instability. Combine independent readings or investigate before committing."
+                  : selectedSite === "gate"
+                    ? "The patrol adds +1 instability at each world response. Engage at the gate to remove its strength."
+                    : selectedSite === "archive"
+                      ? "Investigate the records for Knowledge and safe breach timing. A known route through the noise."
+                      : "An engine commitment and 2 shared Power restore the relay. Removing the shield doubles stabilization output."}
+              </p>
+              <p className="beside-line">
+                {beside.length
+                  ? `Beside ${beside.map((object) => object.name).join(", ")}.`
+                  : "Beside nothing. Move up to a piece of apparatus to work on it."}
+              </p>
+              <div className="location-facts">
+                <span>
+                  {view?.shield ? <Shield size={14} /> : <Check size={14} />}
+                  {view?.shield ? "Breach shield active" : "Shield suppressed"}
+                </span>
+                <span>
+                  <Radio size={14} />
+                  {view?.frequencyKnown
+                    ? "Safe frequency known"
+                    : "Frequency uncertain"}
+                </span>
+              </div>
+              {view && (
+                <section
+                  className="location-perception"
+                  aria-label="Private location assessment"
+                >
+                  <div className="section-label">
+                    <LockKeyhole size={14} /> {identity.title} / PRIVATE
+                    ASSESSMENT
+                  </div>
+                  {view.perceptions
+                    .filter((reading) => reading.location === selectedSite)
+                    .map((reading) => (
+                      <div
+                        className={`intel ${reading.status}`}
+                        key={reading.location}
+                      >
+                        <span>{reading.status}</span>
+                        <p>{reading.text}</p>
+                      </div>
+                    ))}
+                  <p className="muted">
+                    Other specialists' unshared assessments are hidden.
+                  </p>
+                  <button
+                    className="text-button"
+                    disabled={
+                      view.phase !== "action" ||
+                      view.reports.some(
+                        (r) => r.seat === seat && r.location === selectedSite,
+                      )
+                    }
+                    onClick={() =>
+                      send({ type: "share", target: selectedSite ?? "rift" })
+                    }
+                  >
+                    <Send size={14} />{" "}
+                    {view.reports.some(
+                      (r) => r.seat === seat && r.location === selectedSite,
+                    )
+                      ? "Location assessment shared"
+                      : "Share location assessment"}
+                  </button>
+                  {selectedSite === "gate" &&
+                    hasReports(view, "gate", ["dice", "bag"]) && (
+                      <p className="discovery-note">
+                        PATROL WEAKNESS /{" "}
+                        {view.discoveries.flankUsed
+                          ? "Opening spent"
+                          : "Next Engage at West gate gains +1 effect. Any specialist can exploit it."}
+                      </p>
+                    )}
+                  {selectedSite === "archive" &&
+                    hasReports(view, "archive", ["bag", "systems"]) && (
+                      <p className="discovery-note">
+                        POWER CACHE /{" "}
+                        {view.discoveries.cacheUsed
+                          ? "Cache recovered"
+                          : "Investigate here with engine pieces to recover +2 shared Power, once only."}
+                      </p>
+                    )}
+                </section>
+              )}
+            </div>
+          </section>
+          <aside className="team-sidebar" aria-label="Shared mission state">
+            <section className="objective-section">
+              <div className="section-label">
+                <Flag size={14} />
+                TEAM OBJECTIVE
+              </div>
+              <h2>Close the breach.</h2>
+              <p>Keep Greyhaven standing.</p>
+              <div className="objective-counter">
+                {/* Keyed on the pulse so a gain replays the surge even when the
+                  counter is already mid-animation from the previous one. */}
+                <strong
+                  key={progressPulse}
+                  className={
+                    progressFrom < progress ? "motion-surge" : undefined
+                  }
+                >
+                  {progress}
+                  <small>
+                    {" "}
+                    /{" "}
+                    {view?.requiredProgress ?? playableMission.requiredProgress}
+                  </small>
+                </strong>
+                <span>STABILIZATION</span>
+              </div>
+              <div className="segmented-track">
+                {Array.from(
+                  {
+                    length:
+                      view?.requiredProgress ??
+                      playableMission.requiredProgress,
+                  },
+                  (_, i) => {
+                    const lit = i >= progressFrom && i < progress;
+                    return (
+                      <i
+                        key={lit ? `${i}-${progressPulse}` : i}
+                        className={
+                          lit
+                            ? "filled motion-ignite"
+                            : i < progress
+                              ? "filled"
+                              : ""
+                        }
+                        style={
+                          lit
+                            ? ({
+                                "--motion-delay": `${staggerDelay(i - progressFrom)}ms`,
+                              } as CSSProperties)
+                            : undefined
+                        }
+                      />
+                    );
+                  },
+                )}
+              </div>
+            </section>
+            <section className="pressure-section">
+              <div className="section-label">
+                <Activity size={14} />
+                INSTABILITY<strong>{instability} / 12</strong>
+              </div>
+              {/* One flash, never a loop: a permanent alarm would stop reading
+                as news long before instability actually reaches 12. */}
+              <div
+                key={instabilityPulse}
+                className={`segmented-track danger${escalating ? " motion-flash" : ""}`}
+              >
+                {Array.from({ length: 12 }, (_, i) => (
+                  <i key={i} className={i < instability ? "filled" : ""} />
+                ))}
+              </div>
+              <p>At 12, Greyhaven falls. Six rounds remain at deployment.</p>
+              {/* The world answered and re-issued its forecast; the block settles
+                back in so the escalation lands somewhere other than the log. */}
+              <div
+                key={roundPulse}
+                className={`world-response${roundTurned ? " motion-settle" : ""}`}
+              >
+                <span>NEXT WORLD RESPONSE</span>
+                <strong>
+                  +{pressure} instability
+                  {view?.round === 6 ? " / final surge" : ""}
+                </strong>
+                <small>
+                  Breach surge
+                  {(view?.threat ?? 3) > 0 ? " + active patrol" : " only"}. All
+                  four must finish.
+                </small>
+              </div>
+            </section>
+            <section className="resources-section">
+              <div className="section-label">SHARED RESERVES</div>
+              <div className="resource-pool">
+                {(
+                  [
+                    ["materiel", Diamond],
+                    ["power", Zap],
+                    ["knowledge", BookOpen],
+                    ["influence", Flag],
+                  ] as const
+                ).map(([key, Icon]) => (
+                  <div key={key} title={key}>
+                    <Icon size={17} />
+                    <strong>{view?.resources[key] ?? 0}</strong>
+                    <span>{key}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="comms-section">
+              <div className="section-label">
+                <Radio size={14} />
+                TEAM CHANNEL
+              </div>
+              <div className="comms-feed" aria-live="polite">
+                {view?.requests.map((request) => (
+                  <button
+                    className={`assist-request${arrived(`request:${request.seat}`) ? " motion-settle" : ""}`}
+                    style={arrivalDelay(`request:${request.seat}`)}
+                    key={request.seat}
+                    onClick={() => {
+                      setAlly(request.seat);
+                      setAction("assist");
+                    }}
+                  >
+                    <HandHelping size={17} />
+                    <span>
+                      <strong>
+                        {identities[request.seat].title} needs support
+                      </strong>
+                      <small>{request.target} / spend capability to help</small>
+                    </span>
+                    <ChevronRight size={15} />
+                  </button>
+                ))}
+                {view?.reports.map((report) => (
+                  <div
+                    className={`report${arrived(`report:${report.seat}-${report.location}`) ? " motion-settle" : ""}`}
+                    style={arrivalDelay(
+                      `report:${report.seat}-${report.location}`,
+                    )}
+                    key={`${report.seat}-${report.location}`}
+                  >
+                    <span style={{ color: identities[report.seat].color }}>
+                      {identities[report.seat].title} /{" "}
+                      {locations.find((l) => l.id === report.location)?.name} /
+                      SHARED
+                    </span>
+                    <p>{report.text}</p>
+                  </div>
+                ))}
+                {!view?.reports.length && (
+                  <p className="muted">No readings shared yet.</p>
+                )}
+              </div>
+            </section>
+          </aside>
+        </div>
+        <section className="player-area" aria-label="Character console">
+          <nav className="crew-bar" aria-label="Crew seats">
+            {seats.map((role) => {
+              const member = view?.players.find((p) => p.seat === role);
+              const id = identities[role];
+              const boost = view?.boosts[role] ?? 0;
+              const supported = boostArrivals.has(`${role}:${boost}`);
+              return (
+                <button
+                  key={role}
+                  style={{ "--crew-color": id.color } as CSSProperties}
+                  className={`crew-seat ${seat === role ? "active" : ""}`}
+                  data-tutorial-seat={role}
+                  onClick={() => game.mode === "practice" && changeSeat(role)}
+                  aria-pressed={seat === role}
+                  disabled={game.mode === "team" && seat !== role}
+                >
+                  <id.icon size={22} />
+                  <span>
+                    <strong>{id.title}</strong>
+                    <small>
+                      {id.family} / {id.engine}
+                    </small>
+                  </span>
+                  {/* Support is something a teammate spent on you; the label is
+                    remounted on the new total so the flash replays. */}
+                  <span
+                    key={`${role}:${boost}`}
+                    className={`crew-state${supported ? " motion-flash" : ""}`}
+                  >
+                    {game.mode === "team" && !game.onlineSeats.includes(role)
+                      ? "OFFLINE"
+                      : member?.ready
+                        ? "FINISHED"
+                        : member?.holding
+                          ? "HOLDING"
+                          : boost > 0
+                            ? `+${boost} SUPPORT`
+                            : "AVAILABLE"}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+          {view && (
+            <div className="console-layout">
+              <div className="engine-section">
+                <div className="engine-heading">
+                  <div>
+                    <span className="eyebrow">
+                      {identity.title} /{" "}
+                      {locations.find((l) => l.id === player?.location)?.name}
+                    </span>
+                    <h2>{identity.engine}</h2>
+                  </div>
+                  <span className="component-count">
+                    {player?.upgraded ? "ENHANCED" : "STANDARD KIT"}
+                    {tier > 0 ? ` / TIER ${tier}` : ""}
+                  </span>
+                  <button
+                    className="icon-button"
+                    aria-label={`${identity.title} rules reference`}
+                    title={`${identity.title} rules reference`}
+                    onClick={() => setRulesOpen(true)}
+                  >
+                    <CircleHelp size={20} />
+                  </button>
+                </div>
+                <EngineConsole
+                  view={view}
+                  selected={pieces}
+                  onSelect={selectPiece}
+                  onDraw={() => send({ type: "draw" })}
+                  onAllocate={(die, facet) =>
+                    send({ type: "allocate", die, facet })
+                  }
+                  onKeep={(piece) => send({ type: "keep", piece })}
+                  onSocket={setSocket}
+                  socket={socket}
+                  onAction={setAction}
+                />
+                <section className="advancement" aria-label="Advancement">
+                  <div className="section-label">
+                    <Sparkles size={13} /> ADVANCEMENT
+                  </div>
+                  <ol className="advance-track">
+                    {specialistFor(seat).growth.map((step) => {
+                      const held = tier >= engineTier(step.at);
+                      return (
+                        <li
+                          key={step.at}
+                          className={held ? "held" : "locked"}
+                          aria-label={`${held ? "Unlocked" : "Locked"}: ${step.gain}`}
+                        >
+                          <span className="advance-when">
+                            {held ? (
+                              <Check size={12} />
+                            ) : (
+                              <LockKeyhole size={12} />
+                            )}
+                            ROUND {step.at}
+                          </span>
+                          <p>{step.gain}</p>
+                        </li>
+                      );
+                    })}
+                    <li
+                      className={
+                        player?.upgraded
+                          ? "held"
+                          : view.artifact
+                            ? "offered"
+                            : "spent"
+                      }
+                    >
+                      <span className="advance-when">
+                        {player?.upgraded ? (
+                          <Check size={12} />
+                        ) : (
+                          <Diamond size={12} />
+                        )}
+                        POWER CORE
+                      </span>
+                      <p>
+                        {player?.upgraded
+                          ? identity.upgrade
+                          : view.artifact
+                            ? "Unclaimed. Keep it for a permanent upgrade, or donate it for 2 shared Power."
+                            : "Donated to the team. This upgrade is forfeited for the mission."}
+                      </p>
+                    </li>
+                  </ol>
+                </section>
+                <div className="engine-footer">
+                  <button
+                    className={`text-button ${player?.holding ? "highlight" : ""}`}
+                    data-tutorial="hold"
+                    onClick={() => send({ type: "hold" })}
+                    disabled={player?.ready || view.phase !== "action"}
+                  >
+                    <Pause size={14} />
+                    {player?.holding ? "Capability held" : "Hold capability"}
+                  </button>
+                  <button
+                    className="text-button"
+                    onClick={() => setArtifact(true)}
+                    data-tutorial="core"
+                  >
+                    <Diamond size={14} />
+                    {view.artifact
+                      ? "Unclaimed power core"
+                      : player?.upgraded
+                        ? "Upgrade installed"
+                        : "Core donated"}
+                  </button>
+                </div>
+              </div>
+              <div className="action-section">
+                <div className="section-label">COMMIT TO THE SHARED WORLD</div>
+                <div className="action-slots">
+                  {actions.map((item) => (
+                    <button
+                      key={item.id}
+                      className={action === item.id ? "selected" : ""}
+                      onClick={() => setAction(item.id)}
+                      aria-pressed={action === item.id}
+                      title={item.label}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const piece = event.dataTransfer.getData("text/plain");
+                        if (piece) setPieces([piece]);
+                        setAction(item.id);
+                      }}
+                    >
+                      <item.icon size={18} />
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="target-line">
+                  <span>TARGET</span>
+                  {action === "engage" ? (
+                    inReach.length ? (
+                      <select
+                        aria-label="Enemy to engage"
+                        value={quarry?.id ?? ""}
+                        onChange={(event) => setFoe(event.target.value)}
+                      >
+                        {inReach.map((enemy) => (
+                          <option key={enemy.id} value={enemy.id}>
+                            {enemy.name} ({enemy.strength})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <strong>Nothing in reach</strong>
+                    )
+                  ) : action === "assist" ? (
+                    <select
+                      aria-label="Assistance recipient"
+                      value={recipient}
+                      onChange={(event) => setAlly(event.target.value as Seat)}
+                    >
+                      {seats
+                        .filter((s) => s !== seat)
+                        .map((s) => (
+                          <option key={s} value={s}>
+                            {identities[s].title}
+                          </option>
+                        ))}
+                    </select>
+                  ) : action === "acquire" ? (
+                    <select
+                      aria-label="Resource to acquire"
+                      value={resource}
+                      onChange={(e) => setResource(e.target.value)}
+                    >
+                      {["power", "materiel", "knowledge", "influence"].map(
+                        (r) => (
+                          <option key={r}>{r}</option>
+                        ),
+                      )}
+                    </select>
+                  ) : (
+                    <strong>
+                      {action === "recover" ? identity.title : location.name}
+                    </strong>
+                  )}
+                  <button
+                    className="text-button"
+                    onClick={() =>
+                      send({ type: "request", target: selectedSite ?? "power" })
+                    }
+                    data-tutorial="request"
+                  >
+                    <Radio size={13} />
+                    Request help
+                  </button>
+                </div>
+                <div className="action-preview" aria-live="polite">
+                  <span>{preview?.cost || "No components committed"}</span>
+                  <p>{preview?.allowed ? preview.effect : preview?.reason}</p>
+                </div>
+                <div className="commit-row">
+                  <button
+                    className="primary-button"
+                    disabled={
+                      !preview?.allowed ||
+                      view.phase !== "action" ||
+                      !game.started
+                    }
+                    onClick={() => send(command)}
+                    data-tutorial="commit"
+                  >
+                    Commit {action}
+                    <ArrowRight size={17} />
+                  </button>
+                  <button
+                    className="finish-button"
+                    disabled={
+                      player?.ready || view.phase !== "action" || !game.started
+                    }
+                    onClick={() => setFinishing(true)}
+                  >
+                    <Check size={16} />
+                    {player?.ready ? "Round finished" : "Finish round"}
+                  </button>
+                </div>
+              </div>
+              <aside className="private-section">
+                <div className="section-label">
+                  <LockKeyhole size={13} />
+                  YOUR PERCEPTION
+                </div>
+                {view.intel.map((intel, index) => (
+                  <div className={`intel ${intel.status}`} key={index}>
+                    <span>{intel.status}</span>
+                    <p>{intel.text}</p>
+                  </div>
+                ))}
+                <button
+                  className="text-button share-button"
+                  onClick={() => send({ type: "share" })}
+                  disabled={
+                    view.phase !== "action" ||
+                    view.reports.some(
+                      (r) => r.seat === seat && r.location === "rift",
+                    )
+                  }
+                >
+                  <Send size={13} />
+                  {view.reports.some(
                     (r) => r.seat === seat && r.location === "rift",
                   )
-                }
-              >
-                <Send size={13} />
-                {view.reports.some(
-                  (r) => r.seat === seat && r.location === "rift",
-                )
-                  ? "Reading shared"
-                  : "Share reading with team"}
-              </button>
-              <div className="private-objective">
-                <span>PRIVATE AMBITION</span>
-                <p>{view.objective}</p>
-              </div>
-            </aside>
-          </div>
-        )}
-      </section>
+                    ? "Reading shared"
+                    : "Share reading with team"}
+                </button>
+                <div className="private-objective">
+                  <span>PRIVATE AMBITION</span>
+                  <p>{view.objective}</p>
+                </div>
+              </aside>
+            </div>
+          )}
+        </section>
+      </div>
       <footer className="event-ribbon">
         <button className="event-tag" onClick={() => setHistory(!history)}>
           FIELD LOG
@@ -980,7 +1273,7 @@ export function App() {
                   className="primary-button"
                   disabled={game.status === "connecting"}
                   onClick={() => {
-                    setSelected("relay");
+                    setSelected(hexKey(apparatusOf("relay")));
                     setPieces([]);
                     setAction("contribute");
                     setArtifact(false);

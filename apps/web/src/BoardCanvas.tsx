@@ -1,6 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Application, Container, Graphics } from "pixi.js";
-import type { MissionPublicState, Seat } from "@rifts/rules";
+import type { MissionPlayer, MissionPublicState, Seat } from "@rifts/rules";
+import { missionMap } from "@rifts/content";
+import {
+  footprint,
+  hexDistance,
+  hexKey,
+  hexToPixel,
+  hexesWithin,
+  parseHex,
+  type Hex,
+} from "@rifts/shared";
+import { MOTION } from "./motion.js";
 
 /**
  * Exactly the fields the board draws. Both a seat view and the public table
@@ -8,277 +19,561 @@ import type { MissionPublicState, Seat } from "@rifts/rules";
  */
 export type BoardView = Pick<
   MissionPublicState,
-  "phase" | "shield" | "threat" | "players"
+  "phase" | "shield" | "threat" | "players" | "enemies"
 > & { seat?: Seat };
 
-const sites = {
-  gate: [200, 390],
-  relay: [420, 282],
-  archive: [290, 138],
-  rift: [750, 228],
-} as const;
-const colors = {
+const colors: Record<Seat, number> = {
   dice: 0xe5b65c,
   cards: 0xb09be3,
   bag: 0x73c4a1,
   systems: 0x6ab7d8,
 };
+const siteColors: Record<string, number> = {
+  gate: 0xb1745e,
+  relay: 0xd8c37a,
+  archive: 0x8fa8c6,
+  rift: 0xc79ac4,
+};
+
+const HEX = 12;
+const openKeys = new Set(missionMap.open);
+const openHexes = missionMap.open
+  .map((key) => parseHex(key))
+  .filter((hex): hex is Hex => hex !== null);
+/** Hexes belonging to each objective area, precomputed once. */
+const siteAreas = Object.entries(missionMap.sites).map(([name, hex]) => ({
+  name,
+  cells: new Set(
+    hexesWithin(hex, missionMap.siteRadius).map((cell) => hexKey(cell)),
+  ),
+}));
+
+/**
+ * Anchors a unit of a given size may stand on: its whole footprint has to be
+ * open floor, which is why a large unit has fewer roads open to it than a
+ * small one. Computed once per size, on first use.
+ */
+const standings = new Map<number, ReadonlySet<string>>();
+function standing(size: number): ReadonlySet<string> {
+  const known = standings.get(size);
+  if (known) return known;
+  const cells = new Set(
+    openHexes
+      .filter((hex) =>
+        footprint(hex, size).every((cell) => openKeys.has(hexKey(cell))),
+      )
+      .map((hex) => hexKey(hex)),
+  );
+  standings.set(size, cells);
+  return cells;
+}
+
+/**
+ * Footprint cell centres relative to the anchor. `hexToPixel` is linear in q
+ * and r, so offsetting one animated anchor point carries the whole unit, and
+ * the footprint can never drift away from its own dot.
+ */
+const offsets = new Map<number, { x: number; y: number }[]>();
+function footprintOffsets(size: number): { x: number; y: number }[] {
+  const known = offsets.get(size);
+  if (known) return known;
+  const cells = footprint({ q: 0, r: 0 }, size).map((cell) =>
+    hexToPixel(cell, HEX),
+  );
+  offsets.set(size, cells);
+  return cells;
+}
+
+/**
+ * The hexes a unit of this size walks through to get from `from` to `to`.
+ * Breadth-first over standable anchors, so the unit rounds the rock instead of
+ * sliding through it. The server has already chosen the destination; this only
+ * recovers the road it must have taken. Null when there is no legal road.
+ */
+function road(
+  from: Hex,
+  to: Hex,
+  size: number,
+  enemies: readonly { position: Hex }[] = [],
+): Hex[] | null {
+  const goal = hexKey(to);
+  const allowed = standing(size);
+  const previous = new Map<string, Hex | null>([[hexKey(from), null]]);
+  let frontier = [from];
+  while (frontier.length && !previous.has(goal)) {
+    const next: Hex[] = [];
+    for (const here of frontier)
+      for (const step of hexesWithin(here, 1)) {
+        const key = hexKey(step);
+        if (previous.has(key) || !allowed.has(key)) continue;
+        // A patrol does not give way, so a unit never animates through one.
+        if (enemies.some((foe) => hexDistance(step, foe.position) <= size))
+          continue;
+        previous.set(key, here);
+        next.push(step);
+      }
+    frontier = next;
+  }
+  if (!previous.has(goal)) return null;
+  const path: Hex[] = [];
+  for (
+    let hex: Hex | null | undefined = to;
+    hex;
+    hex = previous.get(hexKey(hex))
+  )
+    path.unshift(hex);
+  return path;
+}
+
+/**
+ * The JS twin of --ease-travel in game.css. Travel is not arrival: a settling
+ * curve front-loads so hard that a unit covers a third of the route in the
+ * first tenth of the time, which reads as a teleport followed by a crawl. A
+ * unit crossing ground should push off, cross, and slow into place.
+ */
+function easeTravel(progress: number): number {
+  if (progress <= 0) return 0;
+  if (progress >= 1) return 1;
+  // cubic-bezier(0.45, 0.05, 0.55, 0.95): solve x(u) = progress, read y(u).
+  const axis = (first: number, second: number, u: number) =>
+    3 * first * u * (1 - u) ** 2 + 3 * second * u ** 2 * (1 - u) + u ** 3;
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 14; step++) {
+    const mid = (low + high) / 2;
+    if (axis(0.45, 0.55, mid) < progress) low = mid;
+    else high = mid;
+  }
+  return axis(0.05, 0.95, (low + high) / 2);
+}
+
+/**
+ * How long a route of this many hexes takes. The first hex costs a full
+ * MOTION.travel; every hex after it costs far less, because a unit already
+ * under way keeps its speed, and the total is capped so that crossing the
+ * whole map stays a beat rather than a wait.
+ */
+const travelTime = (hexes: number): number =>
+  Math.min(
+    MOTION.travel * Math.min(hexes, 1) +
+      Math.max(hexes - 1, 0) * MOTION.instant,
+    MOTION.travel * 2 + MOTION.settle,
+  );
+
+/**
+ * A unit under way. Waypoints are whole hexes, except possibly the first: a
+ * retarget mid-flight leaves that one part-way along a leg, so the unit picks
+ * up from exactly where it had got to rather than jumping to a hex centre.
+ */
+type Journey = {
+  path: Hex[];
+  /** Hexes covered by the time each waypoint is reached; as long as `path`. */
+  marks: number[];
+  total: number;
+  destination: Hex;
+  /** Destination key, so a position arriving from the server diffs cheaply. */
+  target: string;
+  startedAt: number;
+  duration: number;
+};
+
+function begin(
+  path: Hex[],
+  destination: Hex,
+  now: number,
+  reduced: boolean,
+): Journey {
+  const marks: number[] = [];
+  let total = 0;
+  let previous: Hex | null = null;
+  for (const hex of path) {
+    if (previous) total += hexDistance(previous, hex);
+    marks.push(total);
+    previous = hex;
+  }
+  return {
+    path,
+    marks,
+    total,
+    destination,
+    target: hexKey(destination),
+    startedAt: now,
+    duration: reduced ? 0 : travelTime(total),
+  };
+}
+
+/**
+ * Where a unit is right now, and the whole hex it is walking into. Sampling by
+ * distance covered rather than by waypoint index keeps a part-leg from
+ * stretching out to fill a whole leg's worth of time.
+ */
+function sample(journey: Journey, now: number): { at: Hex; into: Hex } {
+  if (journey.total <= 0)
+    return { at: journey.destination, into: journey.destination };
+  const elapsed =
+    journey.duration <= 0 ? 1 : (now - journey.startedAt) / journey.duration;
+  const covered = easeTravel(elapsed) * journey.total;
+  let leg = 0;
+  while (
+    leg + 2 < journey.path.length &&
+    (journey.marks[leg + 1] ?? 0) <= covered
+  )
+    leg++;
+  const from = journey.path[leg];
+  const into = journey.path[leg + 1];
+  if (!from || !into)
+    return { at: journey.destination, into: journey.destination };
+  const start = journey.marks[leg] ?? 0;
+  const span = (journey.marks[leg + 1] ?? 0) - start;
+  const along =
+    span <= 0 ? 1 : Math.min(1, Math.max(0, (covered - start) / span));
+  return {
+    at: {
+      q: from.q + (into.q - from.q) * along,
+      r: from.r + (into.r - from.r) * along,
+    },
+    into,
+  };
+}
+
+function hexCorners(centre: { x: number; y: number }, radius: number) {
+  const points: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 180) * (60 * i);
+    points.push(centre.x + radius * Math.cos(angle));
+    points.push(centre.y + radius * Math.sin(angle));
+  }
+  return points;
+}
+
+/** Nearest open hex to a point, which is enough hit-testing for a click. */
+function hexAtPixel(x: number, y: number): Hex | null {
+  let best: { hex: Hex; distance: number } | null = null;
+  for (const hex of openHexes) {
+    const centre = hexToPixel(hex, HEX);
+    const distance = (centre.x - x) ** 2 + (centre.y - y) ** 2;
+    if (!best || distance < best.distance) best = { hex, distance };
+  }
+  return best && best.distance <= (HEX * 1.4) ** 2 ? best.hex : null;
+}
+
+/** Every object hex, and the site each belongs to, for naming what is hovered. */
+const objectAt = new Map(
+  missionMap.objects.map((object) => [hexKey(object.hex), object]),
+);
+const siteOf = new Map<string, string>();
+for (const area of siteAreas)
+  for (const cell of area.cells)
+    if (!siteOf.has(cell)) siteOf.set(cell, area.name);
+const siteTitles: Record<string, string> = {
+  gate: "West gate",
+  relay: "Reactor relay",
+  archive: "Silent archive",
+  rift: "The breach",
+};
+
+/**
+ * A plain description of what is standing on a hex. The board has no icons
+ * yet, so this is how a player finds out what they are looking at.
+ */
+function describe(hex: Hex, view: BoardView | null): string {
+  const key = hexKey(hex);
+  const enemy = view?.enemies.find((foe) => hexKey(foe.position) === key);
+  if (enemy) return `${enemy.name} — strength ${enemy.strength}`;
+  const unit = view?.players.find(
+    (player) => hexDistance(player.position, hex) <= player.size,
+  );
+  if (unit) return unit.seat === view?.seat ? `${unit.name} — you` : unit.name;
+  const object = objectAt.get(key);
+  if (object)
+    return `${object.name} — ${siteTitles[object.site] ?? object.site}`;
+  const site = siteOf.get(key);
+  if (site) return siteTitles[site] ?? site;
+  return openKeys.has(key) ? "Open floor" : "Solid rock";
+}
+
 export function BoardCanvas({
   view,
   selected,
   onSelect,
+  reachable,
+  focus,
 }: {
   view: BoardView | null;
+  /** Selected hex key, or "" for none. */
   selected: string;
-  onSelect: (id: string) => void;
+  onSelect: (hexKey: string) => void;
+  /** Hex keys the staged commitment could move to. */
+  reachable?: ReadonlySet<string> | undefined;
+  /**
+   * Frame the view on one unit's surroundings instead of the whole map. The
+   * player's own page is a cockpit: what matters there is what is within reach
+   * and what is beside you, and the whole board lives on the shared screen.
+   */
+  focus?: { centre: Hex; radius: number } | undefined;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const sceneRef = useRef<{ app: Application; dynamic: Container } | null>(
-    null,
-  );
-  const latest = useRef({ view, selected, onSelect });
+  const [hover, setHover] = useState<{
+    text: string;
+    x: number;
+    y: number;
+    /** Sit on the left of the cursor instead, so an edge cannot clip it. */
+    flip: boolean;
+  } | null>(null);
+  const latest = useRef({ view, selected, onSelect, reachable, focus });
   useEffect(() => {
-    latest.current = { view, selected, onSelect };
-  }, [view, selected, onSelect]);
+    latest.current = { view, selected, onSelect, reachable, focus };
+  }, [view, selected, onSelect, reachable, focus]);
 
   useEffect(() => {
     const host = hostRef.current;
-
-    if (!host) {
-      return;
-    }
-
+    if (!host) return;
     const app = new Application();
     let cancelled = false;
     let initialized = false;
 
     void app
-      .init({
-        background: "#182322",
-        resizeTo: host,
-        antialias: true,
-      })
+      .init({ background: "#161d1c", resizeTo: host, antialias: true })
       .then(() => {
-        initialized = true;
-
         if (cancelled) {
-          app.destroy(true);
+          app.destroy(true, { children: true });
           return;
         }
-
+        initialized = true;
         host.appendChild(app.canvas);
 
-        const terrain = new Container();
-        const dynamic = new Container();
-        app.stage.addChild(terrain, dynamic);
-        sceneRef.current = { app, dynamic };
-        const grid = new Graphics();
-        for (let y = 0; y < 650; y += 35)
-          for (let x = 0; x < 1050; x += 40) {
-            grid
-              .circle(x + (y % 70 ? 20 : 0), y, 1)
-              .fill({ color: 0x8da49a, alpha: 0.14 });
-          }
-        terrain.addChild(grid);
-        const contours = new Graphics();
-        for (let line = 0; line < 12; line++) {
-          const points: number[] = [];
-          for (let step = 0; step <= 90; step++) {
-            const angle = (step / 90) * Math.PI * 2;
-            const radius =
-              150 + line * 23 + Math.sin(angle * 5 + line * 0.21) * 22;
-            points.push(
-              820 + Math.cos(angle) * radius * 1.35,
-              470 + Math.sin(angle) * radius * 0.7,
-            );
-          }
-          contours
-            .poly(points)
-            .stroke({ color: 0x557067, width: 1, alpha: 0.19 });
+        const world = new Container();
+        app.stage.addChild(world);
+        const terrain = new Graphics();
+        const dynamic = new Graphics();
+        world.addChild(terrain, dynamic);
+
+        // Floor and objective areas never change, so draw them once.
+        for (const hex of openHexes) {
+          const centre = hexToPixel(hex, HEX);
+          const key = hexKey(hex);
+          const site = siteAreas.some((area) => area.cells.has(key));
+          terrain
+            .poly(hexCorners(centre, HEX * 0.92))
+            .fill(site ? 0x22302c : 0x1e2725)
+            .stroke({ color: site ? 0x33443d : 0x27332f, width: 1 });
         }
-        terrain.addChild(contours);
-        const road = new Graphics();
-        for (const [a, b] of [
-          ["gate", "relay"],
-          ["relay", "archive"],
-          ["relay", "rift"],
-          ["archive", "rift"],
-        ] as const) {
-          const start = sites[a];
-          const end = sites[b];
-          road
-            .moveTo(start[0], start[1])
-            .lineTo(end[0], end[1])
-            .stroke({ color: 0x101a19, width: 24 });
-          road
-            .moveTo(start[0], start[1])
-            .lineTo(end[0], end[1])
-            .stroke({ color: 0x495750, width: 14, alpha: 0.5 });
-          const distance = Math.hypot(end[0] - start[0], end[1] - start[1]);
-          for (let i = 0; i < distance; i += 16) {
-            const t = i / distance;
-            road
-              .circle(
-                start[0] + (end[0] - start[0]) * t,
-                start[1] + (end[1] - start[1]) * t,
-                1.5,
-              )
-              .fill(0x819284);
-          }
+        // Apparatus, not rooms: these are the things a unit has to stand
+        // beside, so they are what the board actually marks.
+        for (const object of missionMap.objects) {
+          const centre = hexToPixel(object.hex, HEX);
+          const colour = siteColors[object.site] ?? 0xffffff;
+          terrain
+            .poly(hexCorners(centre, HEX * 0.92))
+            .fill({ color: colour, alpha: 0.55 })
+            .stroke({ color: colour, width: 2 });
+          // A ring showing the reach a standard unit needs to work on it.
+          for (const cell of hexesWithin(object.hex, 1))
+            if (openKeys.has(hexKey(cell)))
+              terrain
+                .poly(hexCorners(hexToPixel(cell, HEX), HEX * 0.92))
+                .stroke({ color: colour, width: 1, alpha: 0.4 });
         }
-        terrain.addChild(road);
-        // Small deterministic building footprints and rubble form the shared tabletop terrain.
-        const ruins = new Graphics();
-        for (let i = 0; i < 60; i++) {
-          const x = 50 + ((i * 127) % 650);
-          const y = 45 + ((i * 83) % 500);
-          if (
-            Object.values(sites).some(
-              ([sx, sy]) => Math.hypot(x - sx, y - sy) < 75,
-            )
-          )
-            continue;
-          const w = 10 + (i % 5) * 7;
-          const h = 13 + (i % 4) * 9;
-          ruins.rect(x + 5, y + 7, w, h).fill({ color: 0x070f0e, alpha: 0.45 });
-          ruins
-            .rect(x, y, w, h)
-            .fill(0x2c3933)
-            .stroke({ color: 0x516055, width: 2 });
-          ruins
-            .moveTo(x + 5, y + h - 4)
-            .lineTo(x + w - 5, y + h - 4)
-            .stroke({ color: 0x82917a, width: 2, alpha: 0.4 });
-        }
-        terrain.addChild(ruins);
-        const structures = new Graphics();
-        structures
-          .roundRect(227, 84, 126, 82, 3)
-          .fill(0x101a18)
-          .stroke({ color: 0x829985, width: 2 });
-        for (let i = 0; i < 5; i++)
-          structures
-            .rect(238 + i * 23, 92, 10, 62)
-            .fill(0x4b6050)
-            .stroke({ color: 0xa3ad87, width: 1 });
-        structures
-          .circle(420, 282, 62)
-          .fill(0x102a2d)
-          .stroke({ color: 0x68a6ac, width: 2 });
-        structures
-          .circle(420, 282, 43)
-          .fill(0x273c3e)
-          .stroke({ color: 0x547b7d, width: 8 });
-        structures
-          .poly([420, 250, 448, 266, 448, 298, 420, 314, 392, 298, 392, 266])
-          .fill(0x42666a)
-          .stroke({ color: 0x92c8c8, width: 2 });
-        for (let i = 0; i < 6; i++) {
-          const a = (i * Math.PI) / 3;
-          const x = 420 + Math.cos(a) * 53;
-          const y = 282 + Math.sin(a) * 53;
-          structures.circle(x, y, 4).fill(0x97d4cf);
-        }
-        structures
-          .poly([145, 355, 165, 344, 205, 419, 185, 430])
-          .fill(0x46534c)
-          .stroke({ color: 0x809080, width: 2 });
-        structures
-          .poly([200, 323, 220, 312, 260, 387, 240, 398])
-          .fill(0x46534c)
-          .stroke({ color: 0x809080, width: 2 });
-        structures
-          .ellipse(750, 228, 79, 52)
-          .fill(0x272331)
-          .stroke({ color: 0x9b7299, width: 1 });
-        for (let i = 0; i < 9; i++) {
-          const a = (i * Math.PI * 2) / 9;
-          const x = 750 + Math.cos(a) * 65;
-          const y = 228 + Math.sin(a) * 42;
-          structures
-            .poly([x - 7, y + 12, x + 3, y - 15, x + 11, y + 9])
-            .fill(0x6c6379)
-            .stroke({ color: 0xc1a5bf, width: 1 });
-        }
-        terrain.addChild(structures);
-        const marks = new Graphics();
-        dynamic.addChild(marks);
+
+        const mapBounds = terrain.getLocalBounds();
+        const fit = () => {
+          const pad = 12;
+          // A focused view frames one unit's surroundings; without it the whole
+          // map is fitted, which is what the shared screen wants.
+          const focus = latest.current.focus;
+          const span = focus ? (focus.radius + 1) * HEX * 3 : 0;
+          const centre = focus ? hexToPixel(focus.centre, HEX) : { x: 0, y: 0 };
+          const width = focus ? span : mapBounds.width;
+          const height = focus ? span : mapBounds.height;
+          const left = focus ? centre.x - span / 2 : mapBounds.x;
+          const top = focus ? centre.y - span / 2 : mapBounds.y;
+          const scale = Math.min(
+            (app.screen.width - pad * 2) / Math.max(width, 1),
+            (app.screen.height - pad * 2) / Math.max(height, 1),
+          );
+          world.scale.set(scale);
+          world.position.set(
+            (app.screen.width - width * scale) / 2 - left * scale,
+            (app.screen.height - height * scale) / 2 - top * scale,
+          );
+        };
+
+        app.stage.eventMode = "static";
+        app.stage.hitArea = app.screen;
+        app.stage.on("pointermove", (event) => {
+          const point = world.toLocal(event.global);
+          const hex = hexAtPixel(point.x, point.y);
+          setHover(
+            hex
+              ? {
+                  text: describe(hex, latest.current.view),
+                  x: event.global.x,
+                  y: event.global.y,
+                  flip: event.global.x > app.screen.width * 0.6,
+                }
+              : null,
+          );
+        });
+        app.stage.on("pointerleave", () => setHover(null));
+        app.stage.on("pointertap", (event) => {
+          const point = world.toLocal(event.global);
+          const hex = hexAtPixel(point.x, point.y);
+          if (hex) latest.current.onSelect(hexKey(hex));
+        });
+
         const reducedMotion = window.matchMedia(
           "(prefers-reduced-motion: reduce)",
         ).matches;
-        const glow = new Graphics()
-          .ellipse(750, 228, 45, 29)
-          .stroke({ color: 0xd8aed1, width: 3 });
-        dynamic.addChild(glow);
+        app.ticker.maxFPS = reducedMotion ? 10 : 30;
         let drawnView: BoardView | null | undefined;
         let drawnSelected = "";
-        app.ticker.maxFPS = reducedMotion ? 10 : 30;
+        let drawnReach: ReadonlySet<string> | undefined;
+        let drawnWidth = 0;
+        let drawnFocus = "";
+        let drawnTravel = false;
+
+        const journeys = new Map<Seat, Journey>();
+        /**
+         * Keep a unit's journey aimed wherever the server last put it. Rounds
+         * are simultaneous, so a position landing mid-flight retargets from the
+         * hex the unit is already walking into, rather than queueing behind the
+         * road it was on or snapping back to a hex centre.
+         */
+        const travel = (player: MissionPlayer, now: number): Journey => {
+          const current = journeys.get(player.seat);
+          if (current?.target === hexKey(player.position)) return current;
+          // First sight of a unit is not a journey: it is simply there. Under a
+          // reduced-motion preference no move is one either.
+          let path = [player.position];
+          if (current && !reducedMotion) {
+            const { at, into } = sample(current, now);
+            const found = road(
+              into,
+              player.position,
+              player.size,
+              latest.current.view?.enemies ?? [],
+            );
+            const rest = found ?? [into, player.position];
+            path = hexDistance(at, into) < 1e-6 ? rest : [at, ...rest];
+          }
+          const journey = begin(path, player.position, now, reducedMotion);
+          journeys.set(player.seat, journey);
+          return journey;
+        };
+
         app.ticker.add(() => {
-          terrain.scale.set(app.screen.width / 1000, app.screen.height / 600);
-          dynamic.scale.copyFrom(terrain.scale);
+          const focusKey = latest.current.focus
+            ? `${hexKey(latest.current.focus.centre)}/${latest.current.focus.radius}`
+            : "";
+          if (drawnWidth !== app.screen.width || drawnFocus !== focusKey) {
+            drawnWidth = app.screen.width;
+            drawnFocus = focusKey;
+            fit();
+          }
           const state = latest.current;
-          const t = performance.now() / 1000;
-          const pulse = reducedMotion ? 0.5 : (Math.sin(t * 1.4) + 1) / 2;
-          glow.alpha = pulse * 0.35;
-          if (drawnView === state.view && drawnSelected === state.selected)
+          const now = performance.now();
+          // Journeys are retargeted ahead of the redraw guard, because a new
+          // position can land on any frame. A unit under way keeps the board
+          // redrawing, plus one frame past the end so it lands exactly.
+          const anchors = new Map<Seat, Hex>();
+          let travelling = false;
+          // Leaving the table ends every journey. This component outlives a
+          // mission, so without it a fresh crew would walk from where the last
+          // one stood to their deployment hexes instead of simply being there.
+          if (!state.view) journeys.clear();
+          for (const player of state.view?.players ?? []) {
+            const journey = travel(player, now);
+            anchors.set(player.seat, sample(journey, now).at);
+            if (now < journey.startedAt + journey.duration) travelling = true;
+          }
+          if (
+            !travelling &&
+            !drawnTravel &&
+            drawnView === state.view &&
+            drawnSelected === state.selected &&
+            drawnReach === state.reachable
+          )
             return;
+          drawnTravel = travelling;
           drawnView = state.view;
           drawnSelected = state.selected;
-          marks.clear();
-          marks.ellipse(750, 228, 40 + pulse * 4, 25 + pulse * 2).fill({
-            color: state.view?.phase === "won" ? 0x6ac9ac : 0xd2a2ca,
-            alpha: 0.2 + pulse * 0.1,
-          });
-          marks
-            .poly([
-              747, 185, 731, 223, 747, 220, 738, 268, 770, 220, 753, 226, 766,
-              192,
-            ])
-            .fill(state.view?.phase === "won" ? 0x9ae8c4 : 0xe5b6e2);
-          if (state.view?.shield ?? true)
-            marks
-              .ellipse(750, 228, 90, 61)
-              .stroke({ color: 0xbe8ebf, width: 2, alpha: 0.4 + pulse * 0.2 });
-          const position = sites[state.selected as keyof typeof sites];
-          if (position)
-            marks
-              .circle(position[0], position[1], 75)
-              .stroke({ color: 0xc2d1b0, alpha: 0.5, width: 1 });
-          for (let i = 0; i < (state.view?.threat ?? 3); i++)
-            marks
-              .poly([179 + i * 17, 455, 185 + i * 17, 444, 191 + i * 17, 455])
-              .fill(0xe88478);
-          state.view?.players.forEach((player, i) => {
-            const pos = sites[player.location];
-            const x = pos[0] - 27 + i * 18;
-            const y = pos[1] + 108;
-            marks.circle(x + 2, y + 3, 8).fill(0x09110f);
-            marks
-              .circle(x, y, 8)
-              .fill(colors[player.seat])
-              .stroke({
-                color: 0xe3ece1,
-                width: player.seat === state.view?.seat ? 2 : 0.6,
-              });
-            if (player.holding)
-              marks
-                .circle(x, y, 11)
-                .stroke({ color: colors[player.seat], width: 1 });
-          });
+          drawnReach = state.reachable;
+          dynamic.clear();
+
+          // Where this commitment could carry the acting unit.
+          for (const key of state.reachable ?? []) {
+            const hex = parseHex(key);
+            if (hex)
+              dynamic
+                .poly(hexCorners(hexToPixel(hex, HEX), HEX * 0.92))
+                .fill({ color: 0xe3d797, alpha: 0.16 });
+          }
+
+          // Units are drawn as the hexes they actually occupy.
+          for (const player of state.view?.players ?? []) {
+            const colour = colors[player.seat];
+            const anchor = hexToPixel(
+              anchors.get(player.seat) ?? player.position,
+              HEX,
+            );
+            for (const offset of footprintOffsets(player.size))
+              dynamic
+                .poly(
+                  hexCorners(
+                    { x: anchor.x + offset.x, y: anchor.y + offset.y },
+                    HEX * 0.86,
+                  ),
+                )
+                .fill({ color: colour, alpha: 0.34 });
+            dynamic
+              .circle(anchor.x, anchor.y, HEX * 0.55)
+              .fill(colour)
+              .stroke({ color: 0x101815, width: 2 });
+            if (player.seat === state.view?.seat)
+              dynamic
+                .poly(hexCorners(anchor, HEX * (player.size + 1) * 0.95))
+                .stroke({ color: 0xf2ead0, width: 2 });
+          }
+
+          // The opposition, drawn where it is standing rather than counted.
+          for (const enemy of state.view?.enemies ?? []) {
+            const at = hexToPixel(enemy.position, HEX);
+            dynamic
+              .poly(hexCorners(at, HEX * 0.9))
+              .fill({ color: 0xb1745e, alpha: 0.85 })
+              .stroke({ color: 0xe4a680, width: 2 });
+            for (let pip = 0; pip < enemy.strength; pip++)
+              dynamic
+                .circle(at.x - 4 + pip * 4, at.y + HEX * 0.55, 1.6)
+                .fill(0xe4a680);
+          }
+
+          const chosen = parseHex(state.selected);
+          if (chosen)
+            dynamic
+              .poly(hexCorners(hexToPixel(chosen, HEX), HEX * 0.98))
+              .stroke({ color: 0xf2ead0, width: 2 });
         });
-      });
+      })
+      .catch(() => undefined);
 
     return () => {
       cancelled = true;
-      sceneRef.current = null;
-
-      if (initialized) {
-        app.destroy(true);
-      }
+      if (initialized) app.destroy(true, { children: true });
     };
   }, []);
 
   return (
-    <div ref={hostRef} className="board-canvas" data-testid="board-canvas" />
+    <div className="board-canvas" ref={hostRef}>
+      {hover && (
+        <span
+          className={`board-tip${hover.flip ? " flip" : ""}`}
+          style={{ left: hover.x, top: hover.y }}
+          role="status"
+        >
+          {hover.text}
+        </span>
+      )}
+    </div>
   );
 }

@@ -5,6 +5,8 @@ import {
   playableMissionSchema,
   specialists,
   specialistsSchema,
+  briefingMarkers,
+  briefingMarkersSchema,
 } from "./index.js";
 
 const result = scenarioSchema.safeParse(prototypeScenario);
@@ -20,4 +22,8 @@ console.log(`Validated playable mission: ${playableMission.id}`);
 specialistsSchema.parse(specialists);
 console.log(
   `Validated specialists: ${specialists.map((s) => `${s.className} (${s.family})`).join(", ")}`,
+);
+briefingMarkersSchema.parse(briefingMarkers);
+console.log(
+  `Validated briefing markers: ${briefingMarkers.length}, of which ${briefingMarkers.filter((m) => m.canLie).length} can be wrong`,
 );

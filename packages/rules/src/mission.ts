@@ -1,5 +1,18 @@
-import { playableMission, specialistFor } from "@rifts/content";
-import type { EngineFamily } from "@rifts/shared";
+import {
+  briefingMarkers,
+  missionMap,
+  playableMission,
+  specialistFor,
+} from "@rifts/content";
+import {
+  footprint,
+  hexDistance,
+  hexKey,
+  hexesWithin,
+  parseHex,
+  type EngineFamily,
+  type Hex,
+} from "@rifts/shared";
 /**
  * A seat is an engine family, not a class. Classes are authored content and
  * never appear in this module; see docs/product/class-lineup.md.
@@ -29,9 +42,52 @@ export type MissionAction =
   | "acquire"
   | "assist"
   | "recover";
+/**
+ * The Glitter Boy's platform systems. Six of them and five dice, so the pilot
+ * is always choosing what the machine is not doing this round.
+ */
+export const glitterFacets = [
+  "mobility",
+  "bracing",
+  "targeting",
+  "boom",
+  "stabilizer",
+  "shield",
+] as const;
+export type GlitterFacet = (typeof glitterFacets)[number];
+/**
+ * Where a die sits: loose in the tray, committed to a system, or locked. A
+ * locked die does nothing this round and survives the refill with its face,
+ * which is how a partial combination is carried forward. The cost is built in:
+ * a die you lock is a die you did not spend.
+ */
+export type DieSlot = GlitterFacet | "locked" | null;
+/** Which facet each verb draws on. The rest are pilot work, not platform work. */
+export const facetForAction: Partial<Record<MissionAction, GlitterFacet>> = {
+  move: "mobility",
+  engage: "targeting",
+  contribute: "stabilizer",
+  recover: "shield",
+};
 export type MissionCommand =
   | { type: "share"; target?: MissionLocation | undefined }
-  | { type: "act"; action: MissionAction; target: string; pieces: string[] }
+  | { type: "annotate"; label: string; hexes: string[] }
+  | { type: "erase"; mark: string }
+  | { type: "allocate"; die: string; facet: DieSlot }
+  /**
+   * Hold one piece back from this round so it survives the refill. Every
+   * engine pays the same way: what is kept is what was not spent, and it
+   * counts against next round's supply rather than adding to it.
+   */
+  | { type: "keep"; piece: string }
+  | {
+      type: "act";
+      action: MissionAction;
+      target: string;
+      pieces: string[];
+      /** Systems only: which socket on the frame this placement builds into. */
+      socket?: number | undefined;
+    }
   | { type: "request"; target: string }
   | {
       type: "draw" | "hold" | "ready" | "upgrade" | "donate";
@@ -45,7 +101,12 @@ export type MissionResources = {
 export type MissionPlayer = {
   seat: Seat;
   name: string;
-  location: MissionLocation;
+  /** Anchor hex. The unit covers every hex within `size` of it. */
+  position: Hex;
+  /** Footprint radius: 0 small, 1 standard, 2 large. */
+  size: number;
+  /** Derived from position: the site this unit is standing in, if any. */
+  location: MissionLocation | null;
   holding: boolean;
   ready: boolean;
   upgraded: boolean;
@@ -61,10 +122,19 @@ export type MissionCard = {
   description: string;
   kind: string;
 };
-export type MissionToken = { id: string; kind: string };
+export type MissionToken = { id: string; kind: string; kept?: boolean };
 export type MissionEngine = {
-  dice: { id: string; value: number }[];
+  /** `facet` is null while a die is still loose in the tray. */
+  dice: { id: string; value: number; facet: DieSlot }[];
+  /** Dice browned out by a routing this round, kept so the cost stays visible. */
+  vented: { id: string; value: number }[];
+  /** Routings spent: dice moved out of the tray and into a system. */
+  routings: number;
+  /** Routings the platform can make this round. Always fewer than its dice. */
+  capacity: number;
   hand: MissionCard[];
+  /** How many cards a full hand holds. The draw never reaches it in one round. */
+  handSize: number;
   /** Safe tokens from the current push. A hazard clears them; it never joins. */
   pending: MissionToken[];
   bagRemaining: number;
@@ -72,8 +142,48 @@ export type MissionEngine = {
   /** Hazards drawn this round. Never falls until the round refill. */
   stress: number;
   markers: string[];
-  /** Occupied modules; "primed" indicates enhanced next placement. */
-  slots: string[];
+  /**
+   * The machine as built: one entry per socket in a fixed row, holding the
+   * action wired into it or null. The player chooses the socket, so a
+   * contiguous run is something built rather than something stumbled into.
+   */
+  sockets: (MissionAction | null)[];
+  /** Sockets left standing into the next round, at the cost of a marker. */
+  keptSockets: number[];
+  /** The next non-Move placement is enhanced. */
+  primed: boolean;
+};
+/** A placed enemy. Everyone can see it: it is standing on the board. */
+/**
+ * Ink on the master map. One hex is a note; two or more are a route, whose
+ * waypoints are costed against the ground rather than drawn as they please.
+ * Marks carry no private information: the surface is public by construction.
+ */
+export type MapMark = {
+  id: string;
+  seat: Seat;
+  label: string;
+  hexes: string[];
+  round: number;
+};
+/**
+ * A mark the mission itself placed. `precision` is authored and visible and
+ * decides how wide the claim draws; whether the mark is true is decided per
+ * match and never leaves the server until somebody walks into the claim.
+ */
+export type MissionBriefing = {
+  id: string;
+  label: string;
+  hex: string;
+  precision: "known" | "inferred" | "uncertain";
+  state: "standing" | "confirmed" | "struck";
+};
+export type MissionEnemy = {
+  id: string;
+  name: string;
+  position: Hex;
+  strength: number;
+  speed: number;
 };
 export type MissionPublicState = {
   round: number;
@@ -84,13 +194,23 @@ export type MissionPublicState = {
   requiredProgress: number;
   shield: boolean;
   frequencyKnown: boolean;
+  /** Total strength still standing. Derived from `enemies`, kept for displays. */
   threat: number;
+  enemies: MissionEnemy[];
   boosts: Record<Seat, number>;
   log: { id: number; text: string }[];
   players: MissionPlayer[];
   requests: { seat: Seat; target: string }[];
   reports: { seat: Seat; location: MissionLocation; text: string }[];
   discoveries: { flankUsed: boolean; cacheUsed: boolean };
+  /**
+   * Open while nobody has committed an action this round. Ink lands only in
+   * this window, which needs no vote and no lock: planning simply stops when
+   * the round starts being spent.
+   */
+  planning: boolean;
+  marks: MapMark[];
+  briefing: MissionBriefing[];
 };
 export type MissionView = MissionPublicState & {
   seat: Seat;
@@ -117,7 +237,7 @@ export type MissionKitSummary = {
   bagRemaining: number;
   bagHazards: number;
   markers: number;
-  slots: string[];
+  sockets: (MissionAction | null)[];
 };
 /** Public projection for a spectating table screen. Carries no private state. */
 export type MissionTableView = MissionPublicState & {
@@ -133,6 +253,9 @@ export type MissionPrivateState = {
 /** Authoritative state only. Send playerView(), never this object, to clients. */
 export type MissionState = MissionPublicState & {
   random: number;
+  markSeq: number;
+  /** Which briefing mark is this match's false one. Never projected. */
+  falseMarker: string | null;
   private: Record<Seat, MissionPrivateState>;
 };
 export type MissionPreview = {
@@ -140,6 +263,8 @@ export type MissionPreview = {
   cost: string;
   effect: string;
   reason: string;
+  /** Hexes this commitment could move, for a Move preview. Zero otherwise. */
+  range: number;
 };
 /** Normalized output of any engine; contains no private piece identities. */
 export type MissionActionEvent = {
@@ -153,6 +278,12 @@ export type MissionActionEvent = {
 };
 type ActionPlan = MissionPreview & { event: MissionActionEvent | null };
 const locations: readonly string[] = ["gate", "relay", "archive", "rift"];
+const locationNames: Record<MissionLocation, string> = {
+  gate: "the West gate",
+  relay: "the relay",
+  archive: "the archive",
+  rift: "the breach",
+};
 const resourceNames: readonly string[] = [
   "materiel",
   "power",
@@ -245,6 +376,360 @@ const perceptions: Record<
     },
   },
 };
+const openHexes = new Set(missionMap.open);
+const unitSize = (seat: Seat): number => specialistFor(seat).size;
+
+/** A unit may stand here only if its whole footprint is open rock-free floor. */
+const footprintClear = (anchor: Hex, size: number): boolean =>
+  footprint(anchor, size).every((cell) => openHexes.has(hexKey(cell)));
+
+/** Units are solid: two footprints may never overlap. */
+const overlaps = (
+  anchor: Hex,
+  size: number,
+  others: readonly MissionPlayer[],
+): boolean =>
+  others.some(
+    (other) => hexDistance(anchor, other.position) <= size + other.size,
+  );
+
+/** The site a unit of this size standing here counts as being at. */
+/** Apparatus this unit is close enough to put its hands on. */
+export function objectsBeside(
+  anchor: Hex,
+  size: number,
+): (typeof missionMap.objects)[number][] {
+  return missionMap.objects.filter(
+    (object) => hexDistance(anchor, object.hex) <= size + 1,
+  );
+}
+
+/**
+ * The site a unit counts as working at. Being in the room is no longer enough:
+ * you have to be beside something. Nearest wins, because a large unit can
+ * reach apparatus belonging to two sites at once.
+ */
+export function siteAt(anchor: Hex, size: number): MissionLocation | null {
+  let best: { site: MissionLocation; distance: number } | null = null;
+  for (const object of objectsBeside(anchor, size)) {
+    const distance = hexDistance(anchor, object.hex);
+    if (!best || distance < best.distance)
+      best = { site: object.site, distance };
+  }
+  return best?.site ?? null;
+}
+
+/**
+ * Anchors reachable within `steps`, walking one hex at a time.
+ *
+ * Allies squeeze past one another; rock and the opposition do not give way. A
+ * unit may not walk onto a patrol, and stepping into the reach of one ends the
+ * move there: you can close with something, but you cannot stroll past it.
+ * That is what lets a body hold a corridor.
+ */
+export function reachable(
+  from: Hex,
+  size: number,
+  steps: number,
+  enemies: readonly MissionEnemy[] = [],
+): Map<string, number> {
+  const blocked = (hex: Hex) =>
+    enemies.some((enemy) => hexDistance(hex, enemy.position) <= size);
+  const held = (hex: Hex) =>
+    enemies.some((enemy) => hexDistance(hex, enemy.position) <= size + 1);
+  const seen = new Map<string, number>([[hexKey(from), 0]]);
+  let frontier: Hex[] = [from];
+  for (let step = 1; step <= steps; step++) {
+    const next: Hex[] = [];
+    for (const here of frontier) {
+      for (const candidate of hexesWithin(here, 1)) {
+        const key = hexKey(candidate);
+        if (seen.has(key)) continue;
+        if (!footprintClear(candidate, size)) continue;
+        if (blocked(candidate)) continue;
+        seen.set(key, step);
+        // Reached, but not walked through: a patrol's reach stops you.
+        if (!held(candidate)) next.push(candidate);
+      }
+    }
+    frontier = next;
+    if (!frontier.length) break;
+  }
+  return seen;
+}
+
+/**
+ * Steps from one hex to another for a unit of this size, or null when the
+ * ground does not connect them. Uses the same walk as a real commitment, so a
+ * planned route is costed against the map a move would actually face.
+ */
+export function pathCost(
+  from: Hex,
+  size: number,
+  to: Hex,
+  enemies: readonly MissionEnemy[] = [],
+): number | null {
+  if (hexKey(from) === hexKey(to)) return 0;
+  const reach = reachable(from, size, missionMap.open.length, enemies);
+  return reach.get(hexKey(to)) ?? null;
+}
+export type RouteCost = {
+  hexes: number;
+  commitments: number;
+  blocked: boolean;
+};
+/**
+ * What a drawn route costs its owner: ground to cross, and the engine output
+ * that buys it. A route re-costs whenever the world moves, so a patrol
+ * stepping into a leg turns the plan blocked rather than leaving it looking
+ * confident.
+ */
+export function routeCost(
+  waypoints: readonly Hex[],
+  size: number,
+  enemies: readonly MissionEnemy[] = [],
+): RouteCost {
+  let hexes = 0;
+  for (let i = 1; i < waypoints.length; i++) {
+    const from = waypoints[i - 1];
+    const to = waypoints[i];
+    if (!from || !to) continue;
+    const leg = pathCost(from, size, to, enemies);
+    if (leg === null)
+      return {
+        hexes,
+        commitments: Math.ceil(hexes / missionMap.hexesPerEffect),
+        blocked: true,
+      };
+    hexes += leg;
+  }
+  return {
+    hexes,
+    commitments: Math.ceil(hexes / missionMap.hexesPerEffect),
+    blocked: false,
+  };
+}
+/**
+ * Which briefing mark lies this match. Derived from the seed rather than
+ * drawn from the mission's stream, so adding it cannot shift any existing
+ * seeded outcome, and a practice table stays reproducible.
+ */
+export function falseMarkerFor(seed: number): string | null {
+  const candidates = briefingMarkers.filter((marker) => marker.canLie);
+  if (candidates.length === 0) return null;
+  const mixed = Math.imul((seed >>> 0) ^ 0x9e3779b9, 2246822519) >>> 0;
+  return candidates[mixed % candidates.length]?.id ?? null;
+}
+/**
+ * How close a specialist must get before a claim can be checked. Deliberately
+ * independent of how wide the claim draws: counting the spread here would let
+ * a vague claim resolve from further away than a precise one, which is
+ * backwards. The briefing's spread says how sure planning was; the truth is
+ * still at one hex, and somebody has to stand beside it.
+ */
+export const briefingReach = (size: number): number => size + 1;
+/**
+ * Walking into a claim settles it. A standing mark becomes confirmed, or
+ * struck when it was this match's false one; a struck mark is kept and drawn
+ * through, because "we looked and there is nothing here" is worth as much to
+ * the team as finding something.
+ */
+function resolveBriefing(state: MissionState): void {
+  for (const marker of state.briefing) {
+    if (marker.state !== "standing") continue;
+    const centre = parseHex(marker.hex);
+    if (!centre) continue;
+    const seen = state.players.some(
+      (player) =>
+        hexDistance(player.position, centre) <= briefingReach(player.size),
+    );
+    if (!seen) continue;
+    const lying = marker.id === state.falseMarker;
+    marker.state = lying ? "struck" : "confirmed";
+    append(
+      state,
+      lying
+        ? `Briefing was wrong: ${marker.label} is not there.`
+        : `Briefing confirmed: ${marker.label}.`,
+    );
+  }
+}
+/**
+ * A weave alternates Channel and Resonance; Exploit Opening can stand in for
+ * either, which is its second use and a real decision against holding it back
+ * as a reaction. Any single card is a weave of one.
+ */
+export function weaves(cards: readonly { kind: string }[]): boolean {
+  if (!cards.length) return false;
+  if (cards.length === 1) return true;
+  const link = (kind: string) => (kind === "reaction" ? null : kind);
+  // A wildcard takes whichever side keeps the chain alternating, so the chain
+  // is valid if some assignment of the fixed cards alternates.
+  const fixed = cards.map((card) => link(card.kind));
+  for (const start of ["channel", "spell"]) {
+    let want = start;
+    if (
+      fixed.every((kind) => {
+        const ok = kind === null || kind === want;
+        want = want === "channel" ? "spell" : "channel";
+        return ok;
+      })
+    )
+      return true;
+  }
+  return false;
+}
+
+/**
+ * Chains pay superlinearly, so length is the skill: one card is 1, two are 3
+ * as they always were, three are 6 and four are 10. The old hardcoded pair
+ * falls out of the same formula rather than sitting beside it.
+ */
+export const weaveOutput = (length: number): number =>
+  (length * (length + 1)) / 2;
+
+/**
+ * What a surge is worth. Size still counts, but composition is the read: a
+ * pull of one kind is clean and pays its own size again, and a pull holding
+ * all three safe kinds is a full spread and doubles. So a Juicer sometimes
+ * pushes for the missing kind rather than for another token.
+ */
+export function surgeOutput(tokens: readonly { kind: string }[]): number {
+  const base = tokens.reduce(
+    (sum, token) => sum + (token.kind === "jackpot" ? 2 : 1),
+    0,
+  );
+  if (tokens.length < 2) return base;
+  const kinds = new Set(tokens.map((token) => token.kind));
+  if (kinds.size === 1) return base + tokens.length;
+  return ["find", "cache", "signal"].every((kind) => kinds.has(kind))
+    ? base * 2
+    : base;
+}
+
+/**
+ * Modules sit in a fixed row, and a placement is worth more when it is wired
+ * to what is already built beside it. Building a contiguous machine therefore
+ * beats scattering markers across the board.
+ */
+export function wiring(
+  sockets: readonly (MissionAction | null)[],
+  socket: number,
+): number {
+  if (socket < 0 || socket >= sockets.length) return 0;
+  return [sockets[socket - 1], sockets[socket + 1]].filter(Boolean).length;
+}
+
+/** How many sockets the frame carries. Always more than the markers to fill them. */
+export const socketCount = 7;
+
+/** An empty frame, which is what a rebuilt machine starts from. */
+export const emptySockets = (): (MissionAction | null)[] =>
+  Array.from({ length: socketCount }, () => null);
+
+/**
+ * How well a system is calibrated. Matched faces lock it on and double its
+ * output; consecutive faces spin it up and add the length of the run. Junk
+ * still fires, just for what the dice are individually worth, so reading a
+ * roll well pays without a bad roll shutting the platform down.
+ */
+export function coherence(dice: readonly { value: number }[]): {
+  label: string | null;
+  apply: (base: number) => number;
+} {
+  if (dice.length < 2) return { label: null, apply: (base) => base };
+  const faces = dice.map((die) => die.value).sort((a, b) => a - b);
+  if (faces.every((face) => face === faces[0]))
+    return { label: "locked on", apply: (base) => base * 2 };
+  const run =
+    new Set(faces).size === faces.length &&
+    faces.every((face, index) => index === 0 || face === faces[index - 1]! + 1);
+  if (run && faces.length >= 3)
+    return { label: "spun up", apply: (base) => base + faces.length };
+  return { label: null, apply: (base) => base };
+}
+
+/**
+ * How the committed pieces fit together, phrased in the engine's own terms.
+ * Every seat is paid for combination now, so the preview names the fit it
+ * found rather than leaving the player to infer it from a larger number. The
+ * console shows the same phrase live while pieces are still being chosen.
+ */
+export function combination(
+  seat: Seat,
+  engine: MissionEngine,
+  action: MissionAction,
+  pieces: readonly string[],
+  socket: number,
+): string | null {
+  if (seat === "dice") {
+    const facet = facetForAction[action];
+    if (!facet) return null;
+    const label = coherence(facetDice(engine, facet)).label;
+    return label ? `System ${label}.` : null;
+  }
+  if (seat === "cards") {
+    const chain = engine.hand.filter((card) => pieces.includes(card.id));
+    if (chain.length < 2 || !weaves(chain)) return null;
+    return `Weave of ${chain.length}.`;
+  }
+  if (seat === "bag") {
+    const tokens = engine.pending;
+    if (tokens.length < 2) return null;
+    const kinds = new Set(tokens.map((token) => token.kind));
+    if (kinds.size === 1) return `Clean surge: all ${[...kinds][0]}.`;
+    return ["find", "cache", "signal"].every((kind) => kinds.has(kind))
+      ? "Full spread."
+      : null;
+  }
+  const wired = wiring(engine.sockets, socket);
+  return wired ? `Wired to ${wired} module${wired === 1 ? "" : "s"}.` : null;
+}
+
+/**
+ * Which loose dice a routing would brown out. Sending surge to one system
+ * starves everything the platform is holding below it, so committing a high
+ * die early costs the low dice that would have crewed the rest of the
+ * platform. Dice already in a system are past the manifold and safe.
+ */
+export function ventedBy(
+  dice: readonly { id: string; value: number; facet: DieSlot }[],
+  die: { id: string; value: number },
+): { id: string; value: number }[] {
+  return dice
+    .filter((d) => d.facet === null && d.id !== die.id && d.value < die.value)
+    .map((d) => ({ id: d.id, value: d.value }));
+}
+
+/**
+ * How many routings a platform holding this many dice can make. Fewer than
+ * it has dice, always: routing ascending would otherwise brown nothing out
+ * and the order would stop mattering, which is the whole decision.
+ */
+export const routingCapacity = (dice: number): number => Math.max(1, dice - 2);
+
+/**
+ * How many cards the ley network re-forms in a round. Fewer than the hand
+ * holds, so spending the hand down is a real debt rather than free: the hand
+ * only returns to full across a round the Walker plays quietly.
+ */
+export const handRefill = (handSize: number): number =>
+  Math.max(1, handSize - 2);
+
+/** A system's total: what its dice are worth, then how well they fit together. */
+export const systemOutput = (dice: readonly { value: number }[]): number =>
+  coherence(dice).apply(diceOutput(dice));
+
+/** What a group of dice is worth: a 4+ die counts double, as it always has. */
+export const diceOutput = (dice: readonly { value: number }[]): number =>
+  dice.reduce((sum, die) => sum + (die.value >= 4 ? 2 : 1), 0);
+
+/** The dice committed to one platform system. */
+export const facetDice = (
+  engine: MissionEngine,
+  facet: DieSlot,
+): MissionEngine["dice"] => engine.dice.filter((die) => die.facet === facet);
+
 export function hasReports(
   view: Pick<MissionPublicState, "reports">,
   location: MissionLocation,
@@ -292,10 +777,10 @@ function card(id: string, kind: string): MissionCard {
           : "Resonance",
     description:
       kind === "channel"
-        ? "Alone: 1 effect. With Resonance: 3 (upgraded: 4)."
+        ? "Links to a Resonance on either side. Chains pay 1, 3, 6, 10."
         : kind === "reaction"
-          ? "Alone: 1 effect. After relay restored: Assist gives +2."
-          : "Alone: 1 effect. Combine with Channel for 3.",
+          ? "Wildcard: takes either side of a chain. Alone, assists for +2 once the relay is restored."
+          : "Links to a Channel on either side. Chains pay 1, 3, 6, 10.",
   };
 }
 function refill(state: MissionState, seat: Seat): void {
@@ -303,37 +788,83 @@ function refill(state: MissionState, seat: Seat): void {
   const upgraded =
     state.players.find((player) => player.seat === seat)?.upgraded ?? false;
   const prefix = `${seat}-${state.round}`;
+  // Locked dice are the ones the pilot chose not to spend. They keep their
+  // faces through the refill, and the tray is topped back up around them.
+  // Every engine keeps the same way: what was held back survives the refill
+  // and counts against the new supply rather than adding to it.
+  const kept = p.engine.dice.filter((die) => die.facet === "locked");
+  const keptTokens = p.engine.pending.filter((token) => token.kept);
+  // The Walker discards nothing: the whole surviving hand is carried across,
+  // captured here because the engine is rebuilt from scratch just below.
+  const carried = p.engine.hand;
+  const dealt = p.engine.handSize > 0;
+  const builtSockets = p.engine.sockets;
+  const keptSockets = p.engine.keptSockets.filter(
+    (socket) => builtSockets[socket] != null,
+  );
   p.engine = {
     dice: [],
+    vented: [],
+    routings: 0,
+    capacity: 0,
     hand: [],
+    handSize: 0,
     pending: [],
     bagRemaining: 0,
     bagHazards: 0,
     stress: 0,
     markers: [],
-    slots: [],
+    sockets: emptySockets(),
+    keptSockets: [],
+    primed: false,
   };
   const tier = engineTier(state.round);
   const bonus = tier + (upgraded ? 1 : 0);
   if (seat === "dice")
-    p.engine.dice = Array.from({ length: 5 + bonus }, (_, i) => ({
-      id: `${prefix}-die-${i}`,
-      value: 1 + Math.floor(random(state) * 6),
-    }));
-  if (seat === "cards")
-    p.engine.hand = shuffle(
-      state,
-      [
-        "channel",
-        "channel",
-        "spell",
-        "spell",
-        "reaction",
-        // Growth alternates Channel and Resonance so each tier adds a weave.
-        ...(tier >= 1 ? ["channel"] : []),
-        ...(tier >= 2 ? ["spell"] : []),
-      ].map((kind, i) => card(`${prefix}-card-${i}`, kind)),
-    );
+    p.engine.dice = [
+      ...kept,
+      ...Array.from(
+        { length: Math.max(0, 5 + bonus - kept.length) },
+        (_, i) => ({
+          id: `${prefix}-die-${i}`,
+          value: 1 + Math.floor(random(state) * 6),
+          facet: null as DieSlot,
+        }),
+      ),
+    ];
+  if (seat === "dice")
+    p.engine.capacity = routingCapacity(p.engine.dice.length);
+  if (seat === "cards") {
+    const fresh = [
+      "channel",
+      "channel",
+      "spell",
+      "spell",
+      "reaction",
+      // Growth alternates Channel and Resonance so each tier adds a link.
+      ...(tier >= 1 ? ["channel"] : []),
+      ...(tier >= 2 ? ["spell"] : []),
+    ];
+    // The hand is a slow battery, not a fresh deal. Nothing unspent is
+    // discarded, and the draw is capped below the hand size, so a long chain
+    // is paid for by the thin round that follows it: dump five for 15 and you
+    // come back with three. That is the Ley Line Walker's whole decision, and
+    // it is a decision about tempo rather than about this round alone.
+    // The opening hand is dealt whole; only later rounds are rationed, so a
+    // Walker starts able to weave and then has to earn the next long chain.
+    p.engine.handSize = fresh.length;
+    const room = Math.max(0, fresh.length - carried.length);
+    const draw = dealt ? Math.min(room, handRefill(fresh.length)) : room;
+    p.engine.hand = [
+      ...carried,
+      ...shuffle(
+        state,
+        fresh
+          .slice(0, draw)
+          .map((kind, i) => card(`${prefix}-card-${i}`, kind)),
+      ),
+    ];
+  }
   if (seat === "bag") {
     p.bag = shuffle(
       state,
@@ -352,24 +883,43 @@ function refill(state: MissionState, seat: Seat): void {
     );
     p.engine.bagRemaining = p.bag.length;
     p.engine.bagHazards = p.bag.filter((t) => t.kind === "hazard").length;
+    // Holding the surge over means staying amped: the round starts closer to
+    // burnout by one step for every token carried.
+    p.engine.pending = keptTokens.map((token) => ({ ...token, kept: false }));
+    p.engine.stress = keptTokens.length;
   }
-  if (seat === "systems")
+  if (seat === "systems") {
+    // The frame is stripped and rebuilt every round except where the Wizard
+    // bolted something down. A held socket keeps what it holds, and costs one
+    // of the markers that would have filled it, so a machine that accumulates
+    // across rounds is paid for out of the rounds that build it.
+    p.engine.sockets = emptySockets().map((_, socket) =>
+      keptSockets.includes(socket) ? (builtSockets[socket] ?? null) : null,
+    );
+    p.engine.keptSockets = [...keptSockets];
     p.engine.markers = Array.from(
-      { length: 4 + bonus },
+      { length: Math.max(0, 4 + bonus - keptSockets.length) },
       (_, i) => `${prefix}-marker-${i}`,
     );
+  }
 }
 export function createMission(seed = 1): MissionState {
   const empty = (seat: Seat): MissionPrivateState => ({
     engine: {
       dice: [],
+      vented: [],
+      routings: 0,
+      capacity: 0,
       hand: [],
+      handSize: 0,
       pending: [],
       bagRemaining: 0,
       bagHazards: 0,
       stress: 0,
       markers: [],
-      slots: [],
+      sockets: emptySockets(),
+      keptSockets: [],
+      primed: false,
     },
     bag: [],
     intel: [
@@ -387,6 +937,8 @@ export function createMission(seed = 1): MissionState {
   });
   const state: MissionState = {
     random: Number.isFinite(seed) ? seed >>> 0 : 1,
+    markSeq: 0,
+    falseMarker: falseMarkerFor(Number.isFinite(seed) ? seed : 1),
     round: 1,
     phase: "action",
     instability: 0,
@@ -395,7 +947,14 @@ export function createMission(seed = 1): MissionState {
     requiredProgress: playableMission.requiredProgress,
     shield: true,
     frequencyKnown: false,
-    threat: 3,
+    threat: missionMap.enemies.reduce((sum, e) => sum + e.strength, 0),
+    enemies: missionMap.enemies.map((enemy) => ({
+      id: enemy.id,
+      name: enemy.name,
+      position: { ...enemy.hex },
+      strength: enemy.strength,
+      speed: enemy.speed,
+    })),
     boosts: { dice: 0, cards: 0, bag: 0, systems: 0 },
     log: [
       {
@@ -406,7 +965,9 @@ export function createMission(seed = 1): MissionState {
     players: missionSeats.map((seat) => ({
       seat,
       name: specialistFor(seat).className,
-      location: "relay",
+      position: { ...missionMap.deploy[seat] },
+      size: unitSize(seat),
+      location: siteAt(missionMap.deploy[seat], unitSize(seat)),
       holding: false,
       ready: false,
       upgraded: false,
@@ -415,6 +976,15 @@ export function createMission(seed = 1): MissionState {
     requests: [],
     reports: [],
     discoveries: { flankUsed: false, cacheUsed: false },
+    planning: true,
+    marks: [],
+    briefing: briefingMarkers.map((marker) => ({
+      id: marker.id,
+      label: marker.label,
+      hex: hexKey(marker.hex),
+      precision: marker.precision,
+      state: "standing" as const,
+    })),
     private: {
       dice: empty("dice"),
       cards: empty("cards"),
@@ -423,6 +993,8 @@ export function createMission(seed = 1): MissionState {
     },
   };
   for (const seat of missionSeats) refill(state, seat);
+  // Deployment already stands in one claim, so the starting map is honest.
+  resolveBriefing(state);
   return state;
 }
 export function tableView(state: MissionState): MissionTableView {
@@ -438,12 +1010,16 @@ export function tableView(state: MissionState): MissionTableView {
     shield: state.shield,
     frequencyKnown: state.frequencyKnown,
     threat: state.threat,
+    enemies: state.enemies,
     boosts: state.boosts,
     log: state.log,
     players: state.players,
     requests: state.requests,
     reports: state.reports,
     discoveries: state.discoveries,
+    planning: state.planning,
+    marks: state.marks,
+    briefing: state.briefing,
     kits: missionSeats.map((seat) => {
       const e = state.private[seat].engine;
       return {
@@ -455,7 +1031,7 @@ export function tableView(state: MissionState): MissionTableView {
         bagRemaining: e.bagRemaining,
         bagHazards: e.bagHazards,
         markers: e.markers.length,
-        slots: e.slots,
+        sockets: e.sockets,
       };
     }),
   });
@@ -474,12 +1050,16 @@ export function playerView(state: MissionState, seat: Seat): MissionView {
     shield: state.shield,
     frequencyKnown: state.frequencyKnown,
     threat: state.threat,
+    enemies: state.enemies,
     boosts: state.boosts,
     log: state.log,
     players: state.players,
     requests: state.requests,
     reports: state.reports,
     discoveries: state.discoveries,
+    planning: state.planning,
+    marks: state.marks,
+    briefing: state.briefing,
     seat,
     engine: p.engine,
     intel: [
@@ -510,15 +1090,42 @@ function commandValid(value: unknown): value is MissionCommand {
   const c = value as Record<string, unknown>;
   if (c.type === "act")
     return (
-      Object.keys(c).length === 4 &&
+      Object.keys(c).every((key) =>
+        ["type", "action", "target", "pieces", "socket"].includes(key),
+      ) &&
       typeof c.action === "string" &&
       actions.includes(c.action) &&
       typeof c.target === "string" &&
       Array.isArray(c.pieces) &&
-      c.pieces.every((p: unknown) => typeof p === "string")
+      c.pieces.every((p: unknown) => typeof p === "string") &&
+      (c.socket === undefined ||
+        (typeof c.socket === "number" && Number.isInteger(c.socket)))
+    );
+  if (c.type === "keep")
+    return Object.keys(c).length === 2 && typeof c.piece === "string";
+  if (c.type === "allocate")
+    return (
+      Object.keys(c).length === 3 &&
+      typeof c.die === "string" &&
+      (c.facet === null ||
+        c.facet === "locked" ||
+        (typeof c.facet === "string" &&
+          (glitterFacets as readonly string[]).includes(c.facet)))
     );
   if (c.type === "request")
     return Object.keys(c).length === 2 && typeof c.target === "string";
+  if (c.type === "annotate")
+    return (
+      Object.keys(c).length === 3 &&
+      typeof c.label === "string" &&
+      Array.isArray(c.hexes) &&
+      c.hexes.length > 0 &&
+      c.hexes.every(
+        (hex: unknown) => typeof hex === "string" && parseHex(hex) !== null,
+      )
+    );
+  if (c.type === "erase")
+    return Object.keys(c).length === 2 && typeof c.mark === "string";
   if (c.type === "share")
     return (
       Object.keys(c).every((key) => key === "type" || key === "target") &&
@@ -532,27 +1139,63 @@ function commandValid(value: unknown): value is MissionCommand {
   );
 }
 function plan(view: MissionView, command: MissionCommand): ActionPlan {
+  let range = 0;
   const deny = (reason: string): ActionPlan => ({
     allowed: false,
     cost: "None",
     effect: "None",
     reason,
+    range,
     event: null,
   });
   const allow = (
     cost: string,
     effect: string,
     event: MissionActionEvent | null = null,
-  ): ActionPlan => ({ allowed: true, cost, effect, reason: "", event });
+  ): ActionPlan => ({ allowed: true, cost, effect, reason: "", range, event });
   if (!commandValid(command)) return deny("Malformed command.");
   if (view.phase !== "action") return deny("Mission has ended.");
   const player = view.players.find((p) => p.seat === view.seat);
   if (!player) return deny("Unknown seat.");
-  if (player.ready && command.type !== "share" && command.type !== "request")
+  // Ink, pointing, readings and requests spend no capability, so finishing a
+  // round does not close them.
+  const free = ["share", "request", "annotate", "erase"];
+  if (player.ready && !free.includes(command.type))
     return deny("Round finished. Your engine refreshes when all four finish.");
   const e = view.engine;
   if (command.type !== "act") {
     switch (command.type) {
+      case "annotate": {
+        if (!view.planning)
+          return deny(
+            "The round is being spent. Plans can be drawn again when it ends.",
+          );
+        const label = command.label.trim();
+        if (!label) return deny("Give the mark a label.");
+        if (label.length > 60) return deny("Keep a mark's label short.");
+        if (command.hexes.length > 12)
+          return deny("A route can carry twelve waypoints at most.");
+        const open = new Set(missionMap.open);
+        if (!command.hexes.every((hex) => open.has(hex)))
+          return deny("A mark has to sit on ground someone could stand on.");
+        if (view.marks.length >= 40)
+          return deny("The map is full. Erase something before adding more.");
+        return allow(
+          "None",
+          command.hexes.length > 1
+            ? `Draw a route through ${command.hexes.length} waypoints.`
+            : "Mark this ground for the team.",
+        );
+      }
+      case "erase": {
+        if (!view.planning)
+          return deny(
+            "The round is being spent. The map can be changed again when it ends.",
+          );
+        return view.marks.some((mark) => mark.id === command.mark)
+          ? allow("None", "Remove this mark from the master map.")
+          : deny("That mark is no longer on the map.");
+      }
       case "draw":
         return view.seat !== "bag"
           ? deny("Only the push-your-luck engine draws from a bag.")
@@ -560,8 +1203,64 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
             ? deny("Nothing left to push for until next round.")
             : allow(
                 `One more token; ${e.bagHazards} of ${e.bagRemaining} would break the surge`,
-                `Add a hidden token to this surge. A hazard loses the whole surge, adds ${e.stress + 1} instability, and returns to the bag.`,
+                e.pending.length === 0
+                  ? "Add a hidden token to this surge. Nothing is at stake yet, so a hazard costs no instability, but it returns to the bag and makes every later push worse."
+                  : `Add a hidden token to this surge. A hazard loses all ${e.pending.length}, adds ${e.pending.length + e.stress} instability, and returns to the bag.`,
               );
+      case "keep": {
+        const holdable =
+          view.seat === "cards"
+            ? false
+            : view.seat === "bag"
+              ? e.pending.some((token) => token.id === command.piece)
+              : view.seat === "systems"
+                ? e.sockets[Number(command.piece)] != null
+                : false;
+        return view.seat === "cards"
+          ? deny(
+              "Your hand carries itself. Whatever you do not spend is still there next round; only the draw is limited.",
+            )
+          : !holdable
+            ? deny("That is not something you can hold over.")
+            : allow(
+                "None",
+                "Hold it back from this round so it survives the refill. What you keep counts against next round's supply rather than adding to it.",
+              );
+      }
+      case "allocate": {
+        if (view.seat !== "dice")
+          return deny("Only the dice platform allocates.");
+        const die = e.dice.find((entry) => entry.id === command.die);
+        if (!die) return deny("That die is not on your platform.");
+        if (command.facet === null)
+          return deny(
+            "Surge does not flow backwards. Move that die to another system instead.",
+          );
+        // Moving a die between systems is free: the routing was paid when it
+        // left the tray. Only the tray to a system spends capacity.
+        if (die.facet !== null)
+          return allow(
+            "None",
+            `Reroute that die to ${command.facet}. It is already past the manifold, so this costs no routing.`,
+          );
+        if (e.routings >= e.capacity)
+          return deny(
+            `The platform routes ${e.capacity} time${e.capacity === 1 ? "" : "s"} a round, and all of them are spent.`,
+          );
+        const browned = ventedBy(e.dice, die);
+        const loss = browned.length
+          ? ` Brownout: the ${browned
+              .map((d) => d.value)
+              .sort((a, b) => b - a)
+              .join(", the ")} vent.`
+          : " Nothing lower is left loose, so nothing vents.";
+        return allow(
+          `1 of ${e.capacity - e.routings} routings left`,
+          command.facet === "locked"
+            ? `Park that die: it does nothing this round and keeps its face through the refill.${loss}`
+            : `Route that die to ${command.facet}. The system fires with everything in it.${loss}`,
+        );
+      }
       case "share":
         return view.reports.some(
           (r) =>
@@ -609,11 +1308,11 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     }
   }
   const { action, target, pieces } = command;
+  const socket = command.socket ?? -1;
   if (new Set(pieces).size !== pieces.length)
     return deny("A piece cannot be spent twice.");
   if (action === "move") {
-    if (!locations.includes(target) || target === player.location)
-      return deny("Choose a different map location.");
+    if (!parseHex(target)) return deny("Choose a hex to move to.");
   } else if (action === "assist") {
     if (!missionSeats.some((s) => s === target) || target === view.seat)
       return deny("Choose another seat to assist.");
@@ -624,9 +1323,13 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
     if (target !== view.seat && target !== player.location)
       return deny("Recover targets yourself or your current location.");
   } else {
-    if (target !== player.location) return deny("Move to the target first.");
-    if (action === "engage" && (target !== "gate" || view.threat === 0))
-      return deny("No gate patrol to engage here.");
+    if (action === "engage") {
+      const quarry = view.enemies.find((enemy) => enemy.id === target);
+      if (!quarry) return deny("Choose something to engage.");
+      if (hexDistance(player.position, quarry.position) > player.size + 1)
+        return deny(`Too far from ${quarry.name}. Close with it first.`);
+    } else if (target !== player.location)
+      return deny("Move to the target first.");
     if (action === "investigate" && target !== "archive" && target !== "rift")
       return deny("Investigate the archive or rift.");
     if (action === "contribute" && target !== "relay" && target !== "rift")
@@ -658,30 +1361,52 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       );
     cost = `1 shared ${resource}`;
   } else if (view.seat === "dice") {
-    const die = e.dice.find((d) => d.id === pieces[0]);
-    if (pieces.length !== 1 || !die) return deny("Select one available die.");
-    const threshold = action === "engage" ? 4 : action === "assist" ? 3 : 1;
-    if (die.value < threshold)
-      return deny(`This action requires a die of ${threshold}+.`);
-    amount = die.value >= 4 ? 2 : 1;
+    const facet = facetForAction[action];
+    if (facet) {
+      // A platform system fires with everything committed to it. Engaging also
+      // fires the Boom Gun, which is only braced if a die is holding it steady.
+      const committed = facetDice(e, facet);
+      const boom = action === "engage" ? facetDice(e, "boom") : [];
+      const brace = action === "engage" ? facetDice(e, "bracing") : [];
+      const spent = [...committed, ...boom, ...brace];
+      if (!spent.length)
+        return deny(`Allocate dice to ${facet} before firing it.`);
+      if (
+        pieces.length !== spent.length ||
+        !spent.every((die) => pieces.includes(die.id))
+      )
+        return deny(`Commit everything allocated to ${facet}.`);
+      amount = systemOutput(committed);
+      if (boom.length && !brace.length)
+        return deny(
+          "The Boom Gun cannot fire unbraced. Allocate a die to bracing, or take the Boom Gun dice off.",
+        );
+      amount += systemOutput(boom) * 2;
+    } else {
+      // Pilot work rather than platform work: one loose die, as before.
+      const die = e.dice.find((d) => d.id === pieces[0] && d.facet === null);
+      if (pieces.length !== 1 || !die)
+        return deny("Select one die that is still loose in the tray.");
+      const threshold = action === "assist" ? 3 : 1;
+      if (die.value < threshold)
+        return deny(`This action requires a die of ${threshold}+.`);
+      amount = die.value >= 4 ? 2 : 1;
+    }
   } else if (view.seat === "cards") {
     const selected = e.hand.filter((c) => pieces.includes(c.id));
+    if (pieces.length < 1 || selected.length !== pieces.length)
+      return deny("Select cards from your hand.");
+    if (!weaves(selected))
+      return deny(
+        "A weave alternates Channel and Resonance. Exploit Opening can stand in for either.",
+      );
+    amount = weaveOutput(selected.length) + (player.upgraded ? 1 : 0);
     if (
-      pieces.length < 1 ||
-      selected.length !== pieces.length ||
-      pieces.length > 2
+      selected.length === 1 &&
+      selected[0]?.kind === "reaction" &&
+      action === "assist" &&
+      !view.shield
     )
-      return deny("Select one card or a Channel and Resonance combo.");
-    if (
-      pieces.length === 2 &&
-      !(
-        selected.some((c) => c.kind === "channel") &&
-        selected.some((c) => c.kind === "spell")
-      )
-    )
-      return deny("A combo needs one Channel and one Resonance.");
-    amount = pieces.length === 2 ? (player.upgraded ? 4 : 3) : 1;
-    if (selected[0]?.kind === "reaction" && action === "assist" && !view.shield)
       amount = 2;
   } else if (view.seat === "bag") {
     // A surge is spent whole: the push sized itself when it was taken.
@@ -694,16 +1419,20 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       return deny(
         "Commit the whole surge. Part of a push cannot be held back.",
       );
-    amount = e.pending.reduce(
-      (sum, t) => sum + (t.kind === "jackpot" ? 2 : 1),
-      0,
-    );
+    amount = surgeOutput(e.pending);
   } else {
     if (pieces.length !== 1 || !e.markers.includes(pieces[0] ?? ""))
       return deny("Select one available placement marker.");
-    if (e.slots.includes(action))
-      return deny("That action module is occupied until next round.");
-    amount = e.slots.includes("primed") ? 2 : 1;
+    // Driving is not construction: it takes a marker but seats nothing, so
+    // the machine you are building survives crossing the map.
+    if (action === "move") amount = e.primed ? 2 : 1;
+    else {
+      if (socket < 0 || socket >= socketCount)
+        return deny("Choose a socket on the frame for this placement.");
+      if (e.sockets[socket] !== null)
+        return deny("That socket is filled until the frame is rebuilt.");
+      amount = (e.primed ? 2 : 1) + wiring(e.sockets, socket);
+    }
   }
   const enhanced = action !== "move" && action !== "assist";
   let discovery: MissionActionEvent["discovery"] = null;
@@ -724,23 +1453,77 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
   )
     discovery = "cache";
   if (enhanced) amount += view.boosts[view.seat];
+  let moveSteps = 0;
+  let moveTarget = target;
+  if (action === "move") {
+    // Engine output buys distance: the map's scale converts effect to hexes.
+    range = amount * missionMap.hexesPerEffect;
+    const destination = parseHex(target)!;
+    if (hexKey(destination) === hexKey(player.position))
+      return deny("Choose a different hex.");
+    if (!footprintClear(destination, player.size))
+      return deny(
+        player.size > 1
+          ? "Too tight for a unit this size. A narrower unit could pass."
+          : "That hex is solid rock.",
+      );
+    const others = view.players.filter((entry) => entry.seat !== view.seat);
+    const routes = reachable(player.position, player.size, range, view.enemies);
+    const free = (hex: Hex) => !overlaps(hex, player.size, others);
+    const direct = routes.get(hexKey(destination));
+    if (direct !== undefined && free(destination)) {
+      moveSteps = direct;
+      moveTarget = hexKey(destination);
+    } else {
+      // Heading for a distant objective moves as far as the commitment allows
+      // rather than refusing, so the map is navigable without pixel-hunting.
+      let best: { key: string; distance: number; steps: number } | null = null;
+      for (const [key, steps] of routes) {
+        const hex = parseHex(key);
+        if (!hex || !free(hex)) continue;
+        const distance = hexDistance(hex, destination);
+        if (!best || distance < best.distance) best = { key, distance, steps };
+      }
+      const current = hexDistance(player.position, destination);
+      if (!best || best.distance >= current)
+        return deny(
+          direct !== undefined
+            ? "Another specialist is standing there."
+            : `No route closer. This commitment moves ${range} hexes.`,
+        );
+      moveSteps = best.steps;
+      moveTarget = best.key;
+    }
+  }
   const event: MissionActionEvent = {
     discovery,
     type: action,
     seat: view.seat,
-    target,
+    target: action === "move" ? moveTarget : target,
     amount,
     knowledgeCost: fallback && !reserveCost ? 1 : 0,
     reserveCost,
   };
+  const fit = combination(view.seat, e, action, pieces, command.socket ?? -1);
   let effect: string;
   switch (action) {
-    case "move":
-      effect = `Move to ${target}.`;
+    case "move": {
+      const landing = parseHex(moveTarget)!;
+      const site = siteAt(landing, player.size);
+      const goal = siteAt(parseHex(target)!, player.size);
+      effect = `Move ${moveSteps} hex${moveSteps === 1 ? "" : "es"} to ${
+        site ? locationNames[site] : "open ground"
+      }${!site && goal ? `, heading for ${locationNames[goal]}` : ""}.`;
       break;
-    case "engage":
-      effect = `Remove ${Math.min(view.threat, amount)} gate threat.${discovery === "flank" ? " Includes +1 from the shared patrol weakness; this opening is spent." : ""}`;
+    }
+    case "engage": {
+      const quarry = view.enemies.find((enemy) => enemy.id === target);
+      const dealt = Math.min(quarry?.strength ?? 0, amount);
+      effect = `Hit ${quarry?.name ?? "the enemy"} for ${dealt}${
+        dealt >= (quarry?.strength ?? 0) ? ", destroying it" : ""
+      }.${discovery === "flank" ? " Includes +1 from the shared patrol weakness; this opening is spent." : ""}`;
       break;
+    }
     case "assist":
       effect = `Give ${target} +${amount} on their next effect action. Your committed capability is spent.`;
       break;
@@ -773,14 +1556,14 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
       }
       break;
   }
-  return allow(cost, effect, event);
+  return allow(cost, fit ? `${effect} ${fit}` : effect, event);
 }
 export function previewAction(
   view: MissionView,
   command: MissionCommand,
 ): MissionPreview {
-  const { allowed, cost, effect, reason } = plan(view, command);
-  return { allowed, cost, effect, reason };
+  const { allowed, cost, effect, reason, range } = plan(view, command);
+  return { allowed, cost, effect, reason, range };
 }
 function append(state: MissionPublicState, text: string): void {
   state.log.push({ id: (state.log.at(-1)?.id ?? 0) + 1, text });
@@ -802,12 +1585,26 @@ function reduceWorld(
   if (event.type !== "move" && event.type !== "assist")
     state.boosts[event.seat] = 0;
   switch (event.type) {
-    case "move":
-      player.location = event.target as MissionLocation;
+    case "move": {
+      const destination = parseHex(event.target);
+      if (destination) {
+        player.position = destination;
+        player.location = siteAt(destination, player.size);
+      }
       break;
-    case "engage":
-      state.threat = Math.max(0, state.threat - event.amount);
+    }
+    case "engage": {
+      const quarry = state.enemies.find((enemy) => enemy.id === event.target);
+      if (quarry) {
+        quarry.strength = Math.max(0, quarry.strength - event.amount);
+        state.enemies = state.enemies.filter((enemy) => enemy.strength > 0);
+      }
+      state.threat = state.enemies.reduce(
+        (sum, enemy) => sum + enemy.strength,
+        0,
+      );
       break;
+    }
     case "assist":
       state.boosts[event.target as Seat] += event.amount;
       state.requests = state.requests.filter((r) => r.seat !== event.target);
@@ -840,6 +1637,71 @@ function reduceWorld(
       break;
   }
 }
+/**
+ * The opposition acts once, at the world response, so players act freely and
+ * simultaneously all round and still know exactly when the answer comes. A
+ * patrol that can reach someone hurts them; otherwise it walks toward the
+ * nearest specialist, as far as its speed allows and only over open floor.
+ */
+/**
+ * What a specialist can take off an incoming hit. Only the platform can stand
+ * in front of something: dice left in Shield are dice that spent the whole
+ * round doing nothing else, which is exactly what holding a line costs.
+ */
+function guardOf(state: MissionState, seat: Seat): number {
+  if (seat !== "dice") return 0;
+  return diceOutput(facetDice(state.private.dice.engine, "shield"));
+}
+
+function activateEnemies(state: MissionState): void {
+  for (const enemy of state.enemies) {
+    const targets = state.players;
+    if (!targets.length) continue;
+    const reach = (player: MissionPlayer) =>
+      hexDistance(enemy.position, player.position) - player.size;
+    const nearest = targets.reduce((closest, player) =>
+      reach(player) < reach(closest) ? player : closest,
+    );
+    if (reach(nearest) <= 1) {
+      const guard = guardOf(state, nearest.seat);
+      const damage = Math.max(0, enemy.strength - guard);
+      state.instability += damage;
+      append(
+        state,
+        damage === 0
+          ? `${nearest.name} holds the line: ${enemy.name} hits nothing.`
+          : `${enemy.name} is on ${nearest.name}: +${damage} instability${
+              guard > 0 ? ` (${guard} absorbed)` : ""
+            }.`,
+      );
+      continue;
+    }
+    // Walk in, one hex at a time, over floor it can actually cross.
+    let at = enemy.position;
+    for (let step = 0; step < enemy.speed; step++) {
+      const options = hexesWithin(at, 1)
+        .filter((cell) => footprintClear(cell, 0))
+        .filter((cell) => hexKey(cell) !== hexKey(at));
+      if (!options.length) break;
+      const best = options.reduce((closest, cell) =>
+        hexDistance(cell, nearest.position) <
+        hexDistance(closest, nearest.position)
+          ? cell
+          : closest,
+      );
+      if (
+        hexDistance(best, nearest.position) >= hexDistance(at, nearest.position)
+      )
+        break;
+      at = best;
+    }
+    if (hexKey(at) !== hexKey(enemy.position)) {
+      enemy.position = at;
+      append(state, `${enemy.name} advances on ${nearest.name}.`);
+    }
+  }
+}
+
 function settle(state: MissionState): void {
   // A catastrophic blind final contribution loses even if it reaches the goal.
   if (state.instability >= playableMission.instabilityLimit)
@@ -873,31 +1735,44 @@ export function applyCommand(
     e.pending = e.pending.filter((t) => !used.has(t.id));
     e.markers = e.markers.filter((m) => !used.has(m));
     if (seat === "systems" && used.size > 0) {
-      if (command.action !== "move")
-        e.slots = e.slots.filter((slot) => slot !== "primed");
-      e.slots.push(command.action);
-      if (command.action === "recover") e.slots.push("primed");
+      if (command.action !== "move") {
+        e.primed = false;
+        const seat = command.socket ?? -1;
+        if (seat >= 0 && seat < socketCount) e.sockets[seat] = command.action;
+      }
+      if (command.action === "recover") e.primed = true;
     }
     reduceWorld(next, validation.event);
+    // The round is being spent, so planning is over until it ends.
+    next.planning = false;
     player.holding = false;
     append(
       next,
       `${player.name}: ${command.action} ${command.target}. ${validation.effect} Cost: ${validation.cost}.`,
     );
+    resolveBriefing(next);
   } else {
     switch (command.type) {
       case "draw": {
         const token = p.bag.pop();
         if (token?.kind === "hazard") {
-          // The hazard goes back in, so pushing can only raise the odds.
+          // Burnout costs what was actually at stake: a token for every token
+          // lost, and one more for every burnout already taken this round.
+          // Busting with nothing in hand is a gamble with nothing on it, so it
+          // costs the team nothing; the hazard returning and the stress rising
+          // are punishment enough, because both make the next push worse.
+          const lost = e.pending.length;
           e.stress++;
           e.pending = [];
           p.bag.push(token);
           shuffle(next, p.bag);
-          next.instability += e.stress;
+          const damage = lost === 0 ? 0 : lost + (e.stress - 1);
+          next.instability += damage;
           append(
             next,
-            `${player.name} pushed past the limit: surge lost, +${e.stress} instability.`,
+            damage === 0
+              ? `${player.name} pushed with nothing in hand and burnt out. The hazard goes back in the bag.`
+              : `${player.name} pushed past the limit: ${lost} lost, +${damage} instability.`,
           );
         } else {
           if (token) e.pending.push(token);
@@ -918,6 +1793,33 @@ export function applyCommand(
           next.frequencyKnown = true;
         append(next, `${player.name}: ${validation.effect}`);
         break;
+      case "annotate": {
+        next.markSeq++;
+        next.marks.push({
+          id: `mark-${next.markSeq}`,
+          seat,
+          label: command.label.trim(),
+          hexes: [...command.hexes],
+          round: next.round,
+        });
+        append(
+          next,
+          command.hexes.length > 1
+            ? `${player.name} drew a route: ${command.label.trim()}.`
+            : `${player.name} marked the map: ${command.label.trim()}.`,
+        );
+        break;
+      }
+      case "erase": {
+        const removed = next.marks.find((mark) => mark.id === command.mark);
+        next.marks = next.marks.filter((mark) => mark.id !== command.mark);
+        if (removed)
+          append(
+            next,
+            `${player.name} erased "${removed.label}" from the map.`,
+          );
+        break;
+      }
       case "request":
         next.requests = [
           ...next.requests.filter((r) => r.seat !== seat),
@@ -925,6 +1827,37 @@ export function applyCommand(
         ];
         append(next, `${player.name} requests help with ${command.target}.`);
         break;
+      case "keep": {
+        const token = e.pending.find((entry) => entry.id === command.piece);
+        if (token) token.kept = !token.kept;
+        const socket = Number(command.piece);
+        if (e.sockets[socket] != null)
+          e.keptSockets = e.keptSockets.includes(socket)
+            ? e.keptSockets.filter((entry) => entry !== socket)
+            : [...e.keptSockets, socket];
+        break;
+      }
+      case "allocate": {
+        const die = e.dice.find((entry) => entry.id === command.die);
+        if (!die) break;
+        // Leaving the tray is what costs: the surge routed to this system is
+        // surge the dice below it no longer get.
+        if (die.facet === null) {
+          const browned = ventedBy(e.dice, die);
+          const lost = new Set(browned.map((d) => d.id));
+          e.vented.push(...browned);
+          e.dice = e.dice.filter((entry) => !lost.has(entry.id));
+          e.routings += 1;
+          if (browned.length)
+            append(
+              next,
+              `${player.name} routed a ${die.value} and browned out ${browned.length === 1 ? "a die" : `${browned.length} dice`}.`,
+            );
+        }
+        const routed = e.dice.find((entry) => entry.id === command.die);
+        if (routed) routed.facet = command.facet;
+        break;
+      }
       case "hold":
         player.holding = true;
         append(next, `${player.name} holds capability and remains available.`);
@@ -934,6 +1867,7 @@ export function applyCommand(
         player.holding = false;
         append(next, `${player.name} is ready.`);
         if (next.players.every((entry) => entry.ready)) {
+          activateEnemies(next);
           const pressure = worldPressure(next.round, next.threat);
           next.instability += pressure;
           append(
@@ -951,6 +1885,9 @@ export function applyCommand(
           if (next.phase === "action") {
             next.round++;
             next.requests = [];
+            // A new round opens a fresh planning window: the world has just
+            // moved and the table is stopped together.
+            next.planning = true;
             for (const entry of next.players) {
               entry.ready = false;
               entry.holding = false;
@@ -975,6 +1912,7 @@ export function applyCommand(
           e.dice.push({
             id: `dice-${next.round}-upgrade`,
             value: 1 + Math.floor(random(next) * 6),
+            facet: null,
           });
         if (seat === "systems") e.markers.push(`systems-${next.round}-upgrade`);
         if (seat === "bag") {

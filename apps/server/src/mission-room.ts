@@ -11,6 +11,7 @@ import {
 import {
   commandMessageSchema,
   joinOptionsSchema,
+  pingMessageSchema,
   seatMessageSchema,
 } from "./messages.js";
 
@@ -57,14 +58,13 @@ export class MissionRoom extends Room {
         return;
       }
       try {
-        if (
-          !this.started &&
-          parsed.data.command.type !== "share" &&
-          parsed.data.command.type !== "request"
-        ) {
+        // Planning, readings and requests spend nothing, so they are open
+        // while the team is still assembling. Capability is not.
+        const free = ["share", "request", "annotate", "erase"];
+        if (!this.started && !free.includes(parsed.data.command.type)) {
           this.reject(
             client,
-            "Waiting for all four specialists to join. Readings and requests can be shared now.",
+            "Waiting for all four specialists to join. Readings, requests and the master map are open now.",
           );
           return;
         }
@@ -84,6 +84,20 @@ export class MissionRoom extends Room {
         console.error("Mission command failed", error);
         this.reject(client, "The command could not be completed.");
       }
+    });
+    this.onMessage("ping", (client, payload: unknown) => {
+      const parsed = pingMessageSchema.safeParse(payload);
+      const session = this.sessions.get(client.sessionId);
+      if (!parsed.success || !session || parsed.data.token !== session.token) {
+        this.reject(client, "Invalid ping or session.");
+        return;
+      }
+      if (session.role !== "player") {
+        this.reject(client, "A shared screen cannot point at the map.");
+        return;
+      }
+      // Relayed, not stored: pointing is transient and carries no state.
+      this.broadcast("ping", { seat: session.seat, hex: parsed.data.hex });
     });
     this.onMessage("seat", (client, payload: unknown) => {
       const parsed = seatMessageSchema.safeParse(payload);

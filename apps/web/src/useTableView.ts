@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Client, type Room } from "@colyseus/sdk";
 import type { MissionTableView, Seat } from "@rifts/rules";
 import { browserUuid } from "./browserUuid.js";
+import { pingLifetimeMs, type MissionPing } from "./useMission.js";
 
 type TableMessage = {
   view: MissionTableView;
@@ -22,12 +23,16 @@ function closeRoom(room: Room | null): void {
  */
 export function useTableView(roomId: string | null): {
   view: MissionTableView | null;
+  pings: MissionPing[];
   onlineSeats: Seat[];
   started: boolean;
   status: string;
   error: string | null;
 } {
   const [view, setView] = useState<MissionTableView | null>(null);
+  const [pings, setPings] = useState<MissionPing[]>([]);
+  const pingSeq = useRef(0);
+  const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [onlineSeats, setOnlineSeats] = useState<Seat[]>([]);
   const [started, setStarted] = useState(false);
   const [status, setStatus] = useState(roomId ? "connecting" : "idle");
@@ -62,6 +67,21 @@ export function useTableView(roomId: string | null): {
           setStatus("connected");
           setError(null);
         });
+        room.onMessage<{ seat: Seat; hex: string }>("ping", (message) => {
+          if (!live()) return;
+          pingSeq.current += 1;
+          const entry = { id: pingSeq.current, ...message };
+          setPings((current) => [...current, entry]);
+          pingTimers.current.push(
+            setTimeout(
+              () =>
+                setPings((current) =>
+                  current.filter((item) => item.id !== entry.id),
+                ),
+              pingLifetimeMs,
+            ),
+          );
+        });
         room.onMessage<{ message: string }>("error", (message) => {
           if (live()) setError(message.message);
         });
@@ -90,11 +110,13 @@ export function useTableView(roomId: string | null): {
   // Close only when the page really goes away, never on a remount.
   useEffect(
     () => () => {
+      for (const handle of pingTimers.current) clearTimeout(handle);
+      pingTimers.current = [];
       closeRoom(roomRef.current);
       roomRef.current = null;
     },
     [],
   );
 
-  return { view, onlineSeats, started, status, error };
+  return { view, pings, onlineSeats, started, status, error };
 }

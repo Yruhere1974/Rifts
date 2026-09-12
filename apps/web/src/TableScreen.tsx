@@ -4,6 +4,7 @@ import {
   Activity,
   Flag,
   Hexagon,
+  Map,
   Radio,
   Shield,
   Users,
@@ -17,6 +18,7 @@ import {
 } from "@rifts/rules";
 import { playableMission } from "@rifts/content";
 import { BoardCanvas } from "./BoardCanvas.js";
+import { MasterMap } from "./MasterMap.js";
 import { identities } from "./EngineConsole.js";
 import { useTableView } from "./useTableView.js";
 
@@ -70,6 +72,7 @@ function JoinCode({ roomId, seat }: { roomId: string; seat: Seat }) {
 
 export function TableScreen({ roomId }: { roomId: string | null }) {
   const table = useTableView(roomId);
+  const [surface, setSurface] = useState<"board" | "map">("board");
   const view = table.view;
   const pressure = worldPressure(view?.round ?? 1, view?.threat ?? 3);
   const tier = engineTier(view?.round ?? 1);
@@ -111,6 +114,14 @@ export function TableScreen({ roomId }: { roomId: string | null }) {
           </strong>
           {tier > 0 && <span className="table-tier">TIER {tier}</span>}
         </div>
+        <button
+          className="table-link"
+          aria-pressed={surface === "map"}
+          onClick={() => setSurface(surface === "map" ? "board" : "map")}
+        >
+          <Map size={14} />
+          {surface === "map" ? "Board" : "Master map"}
+        </button>
       </header>
 
       {(!view || !table.started) && (
@@ -124,7 +135,18 @@ export function TableScreen({ roomId }: { roomId: string | null }) {
         </div>
       )}
 
-      <div className="table-layout">
+      {view && surface === "map" && (
+        <MasterMap
+          surface={view}
+          seat={null}
+          size={1}
+          pings={table.pings}
+          onAnnotate={() => undefined}
+          onErase={() => undefined}
+          onPing={() => undefined}
+        />
+      )}
+      <div className="table-layout" hidden={view !== null && surface === "map"}>
         <section className="table-world" aria-label="Shared world">
           <div className="map-surface">
             <BoardCanvas

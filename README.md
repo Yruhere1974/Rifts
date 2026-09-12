@@ -27,6 +27,12 @@ The master tab is the page a cooperative mission is opened from and the one that
 
 A master tab may draw on the map as a seat its own browser has claimed, because the console it spawns inherits its client key and the server can tell they are one person. A shared screen owns nothing and stays read-only. Seat ownership is per browser tab, so four tabs on one machine can hold four different specialists, as can four separate devices. Reloading a tab reclaims its seat; closing it releases the claim. All four must join before spending capability. Reading and requesting help are available while assembling the team.
 
+### Engines
+
+The Glitter Boy's dice are thrown across the tray at the start of each round and settle into routing order, low to high, because routing surge to a system browns out every loose die showing lower.
+
+The Ley Line Walker deals from a ley network of 21 links rather than from a fixed list, so no two missions open on the same hand. Woven links return to the network and are shuffled back in when it runs out, and the count beside the hand is how much is left.
+
 ### Master Map
 
 Deploying opens the **master map**, not the cockpit. It is where the mission is laid out before anything is spent: the brief states what the team is there to do, and the planning window is already open. **Take your seat** moves on to your console, and the mission does not come back here on its own — **Master map** in the header reopens it at any time, or visit `?map=1`.

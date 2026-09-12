@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { missionMap, missionObjectives } from "@rifts/content";
+import { leyDeck, missionMap, missionObjectives } from "@rifts/content";
 import {
   hexDistance,
   hexKey,
@@ -918,8 +918,9 @@ describe("Greyhaven mission", () => {
       }).reason,
     ).toContain("whole surge");
     const before = s.resources.power;
+    const worth = surgeOutput(s.private.bag.engine.pending);
     s = action(s, "bag", "acquire", "power");
-    expect(s.resources.power).toBe(before + 2);
+    expect(s.resources.power).toBe(before + worth);
     expect(s.private.bag.engine.pending).toHaveLength(0);
   });
   it("returns a busting hazard to the bag so pushing only raises the odds", () => {
@@ -1165,12 +1166,21 @@ describe("Greyhaven mission", () => {
     s = travel(s, "cards", "rift");
     const blindStart = s.instability;
     for (let i = 0; i < 2; i++) {
-      const channel = s.private.cards.engine.hand.find(
-        (c) => c.kind === "channel",
-      );
-      const spell = s.private.cards.engine.hand.find((c) => c.kind === "spell");
-      if (!channel || !spell) break;
-      s = action(s, "cards", "contribute", "rift", [channel.id, spell.id]);
+      const link = (kind: string, n: number) => ({
+        id: `blind-${kind}-${i}-${n}`,
+        name: kind,
+        description: kind,
+        kind,
+      });
+      s.private.cards.engine.hand = [
+        link("channel", 1),
+        link("spell", 2),
+        ...s.private.cards.engine.hand,
+      ];
+      s = action(s, "cards", "contribute", "rift", [
+        `blind-channel-${i}-1`,
+        `blind-spell-${i}-2`,
+      ]);
     }
     // Blind stabilization is punished hard enough that two engines cannot rush
     // the breach, and it never reaches the objective on its own.
@@ -1434,6 +1444,77 @@ describe("master map", () => {
     });
     expect([...met.values()].every((entry) => entry.done)).toBe(true);
     expect(met.get("clear-the-west-gate")?.readout).toMatch(/gate clear/i);
+  });
+
+  it("deals the Walker a different opening hand from seed to seed", () => {
+    const shape = (seed: number) =>
+      createMission(seed)
+        .private.cards.engine.hand.map((c) => c.kind)
+        .sort()
+        .join(",");
+    const shapes = new Set(Array.from({ length: 12 }, (_, i) => shape(i + 1)));
+    // The old deal sliced a fixed list before shuffling it, so every mission
+    // opened on the same five kinds. A deck is what makes the draw matter.
+    expect(shapes.size).toBeGreaterThan(1);
+    // Still a real hand every time, and still drawn from one network.
+    for (let seed = 1; seed <= 12; seed++) {
+      const state = createMission(seed);
+      expect(state.private.cards.engine.hand).toHaveLength(
+        state.private.cards.engine.handSize,
+      );
+      expect(state.private.cards.engine.deckRemaining).toBe(
+        leyDeck.length - state.private.cards.engine.handSize,
+      );
+    }
+  });
+
+  it("returns woven links to the network and cuts it again when it runs out", () => {
+    let s = createMission(3);
+    const link = (kind: string, n: number) => ({
+      id: `spend-${n}`,
+      name: kind,
+      description: kind,
+      kind,
+    });
+    // Travel spends cards, so the pair is placed after the Walker arrives.
+    s = travel(s, "cards", "rift");
+    s.private.cards.engine.hand = [link("channel", 1), link("spell", 2)];
+    s = action(s, "cards", "contribute", "rift", ["spend-1", "spend-2"]);
+    // Travelling spends links too, so the network gets those back as well;
+    // the woven pair is simply the most recent thing returned to it.
+    expect(s.private.cards.spent.map((c) => c.id).slice(-2)).toEqual([
+      "spend-1",
+      "spend-2",
+    ]);
+    expect(s.private.cards.spent.length).toBeGreaterThan(2);
+
+    // Draining the network forces a reshuffle rather than an empty hand.
+    s.private.cards.deck = [];
+    s.private.cards.spent = [link("channel", 3), link("spell", 4)];
+    s.private.cards.engine.hand = [];
+    s.private.cards.engine.handSize = 0;
+    const before = s.private.cards.spent.length;
+    s = round(s);
+    expect(before).toBe(2);
+    expect(s.private.cards.engine.hand.length).toBeGreaterThan(0);
+    expect(s.private.cards.spent).toHaveLength(0);
+  });
+
+  it("keeps the ley network out of every projection", () => {
+    const s = createMission(5);
+    const own = JSON.stringify(playerView(s, "cards"));
+    const other = JSON.stringify(playerView(s, "dice"));
+    const table = JSON.stringify(tableView(s));
+    // The count is public to its owner; the order never is, to anyone.
+    for (const id of s.private.cards.deck.map((c) => c.id)) {
+      // Quoted, because "ley-1" is a substring of "ley-19".
+      expect(own).not.toContain(`"${id}"`);
+      expect(other).not.toContain(`"${id}"`);
+      expect(table).not.toContain(`"${id}"`);
+    }
+    expect(playerView(s, "cards").engine.deckRemaining).toBe(
+      s.private.cards.deck.length,
+    );
   });
 
   it("points every objective at a briefing mark that exists", () => {

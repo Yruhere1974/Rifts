@@ -307,10 +307,9 @@ test("private location perspectives combine into a paid team discovery", async (
   await seat(page, "Ley Line Walker");
   // The archive is across the map now, so getting there is a journey.
   expect(await drive.headFor(page, "Silent archive")).toBe(true);
-  await page
-    .getByRole("button", { name: "Channel card", exact: true })
-    .first()
-    .click();
+  // The hand is dealt from the ley network now, so which links it holds is
+  // not fixed; investigating takes a link rather than a Channel specifically.
+  expect(await drive.selectAnyPiece(page)).toBe(true);
   await page.getByRole("button", { name: "Investigate", exact: true }).click();
   await expect(page.locator(".action-preview")).toContainText(
     "+2 shared Power",
@@ -601,6 +600,52 @@ test("the opening tray is rolled, and settles into routing order", async ({
       })),
     );
     for (const die of landed) expect(die.label).toContain(`Die ${die.shown}`);
+  } finally {
+    await context.close();
+  }
+});
+
+test("the Walker's hand is dealt off a ley network with a visible count", async ({
+  page,
+  browser,
+}) => {
+  await deploy(page);
+  await seat(page, "Ley Line Walker");
+  const hand = page.locator(".playing-card");
+  await expect(hand).toHaveCount(5);
+  // The network is a deck, so what it has left is the Walker's information.
+  await expect(page.locator(".ley-deck-count")).toHaveText("16");
+
+  const context = await browser.newContext({ reducedMotion: "no-preference" });
+  try {
+    const dealing = await context.newPage();
+    await dealing.goto("/");
+    await dealing.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await dealing.getByRole("button", { name: "Take your seat" }).click();
+    await dealing.locator(".die").first().waitFor();
+    await dealing
+      .locator(".crew-seat")
+      .filter({ hasText: "Ley Line Walker" })
+      .click();
+    await dealing.locator(".playing-card").first().waitFor();
+    const deal = await dealing.evaluate(() => {
+      const cards = [...document.querySelectorAll(".playing-card")];
+      const anims = cards.flatMap((card) => card.getAnimations());
+      return {
+        names: [
+          ...new Set(anims.map((a) => (a as CSSAnimation).animationName)),
+        ],
+        delays: anims.map((a) => a.effect!.getTiming().delay ?? 0),
+      };
+    });
+    // Dealt off the deck in sequence, in the cards' own dialect rather than
+    // the dice's: each card slides from the network and straightens.
+    expect(deal.names).toEqual(["rifts-card-deal"]);
+    expect(new Set(deal.delays).size).toBeGreaterThan(1);
+
+    // Motion never gates input, because rounds are simultaneous.
+    await dealing.locator(".playing-card").first().click();
+    await expect(dealing.locator(".playing-card.selected")).toHaveCount(1);
   } finally {
     await context.close();
   }

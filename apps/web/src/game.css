@@ -894,6 +894,45 @@ select {
   min-height: 175px;
   overflow-x: auto;
 }
+/* The ley network: the pile the hand is dealt from, and the point every card
+   slides off. Stacked edges rather than a single panel, so a deck reads as a
+   deck; the count is the Walker's own information. */
+.ley-deck {
+  flex: 0 0 46px;
+  min-height: 159px;
+  align-self: flex-start;
+  border-radius: 5px;
+  border: 1px solid #6d6478;
+  background: repeating-linear-gradient(
+    135deg,
+    #2a2633,
+    #2a2633 4px,
+    #322d3c 4px,
+    #322d3c 8px
+  );
+  box-shadow:
+    3px 3px 0 -1px #262230,
+    4px 4px 0 -1px #6d6478,
+    6px 6px 0 -1px #262230,
+    7px 7px 0 -1px #6d6478;
+  margin-right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.ley-deck-count {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.5rem;
+  color: #cfc3dc;
+  line-height: 1;
+}
+.ley-deck-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: #8d8399;
+}
 .playing-card {
   flex: 1 0 77px;
   max-width: 126px;
@@ -2358,6 +2397,32 @@ select {
 }
 .motion-arrive {
   animation: rifts-arrive var(--motion-settle) var(--ease-enter) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+/* Cards are dealt off the network rather than fading in: each one slides out
+   from the deck at the left, so a card landing further right has visibly
+   travelled further, and straightens as it lands. Independent properties, as
+   with the dice, so it composes with the lift on hover and selection. */
+@keyframes rifts-card-deal {
+  from {
+    opacity: 0;
+    translate: calc(var(--deal-index, 0) * -82px - 46px) -10px;
+    rotate: -9deg;
+    scale: 0.94;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+  }
+}
+.playing-card.motion-arrive {
+  animation: rifts-card-deal var(--motion-travel) var(--ease-enter) backwards;
   animation-delay: var(--motion-delay, 0ms);
 }
 

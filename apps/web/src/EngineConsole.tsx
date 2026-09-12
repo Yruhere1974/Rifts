@@ -510,7 +510,8 @@ const wants = (chain: readonly MissionCard[]): string => {
 function CardsEngine({ view, selected, piece }: EngineProps) {
   const hand = view.engine.hand;
   const ids = hand.map((card) => card.id);
-  const arrivals = useArrivals(ids);
+  // The opening hand is dealt from the network like every later draw.
+  const arrivals = useArrivals(ids, true);
   const order = arrivalOrder(ids, arrivals);
   // Selection order is chain order, so a player builds the weave in the
   // sequence they intend rather than in the order the hand happens to sit.
@@ -572,7 +573,14 @@ function CardsEngine({ view, selected, piece }: EngineProps) {
   return (
     <div className="cards-engine">
       <div className="card-hand" ref={handRef}>
-        {hand.map((card) => (
+        {/* The network the hand is dealt from, and the pile cards come off.
+            Its count is the Walker's own information: how much ley is left
+            before what has been woven is shuffled back in. */}
+        <div className="ley-deck" aria-label="Ley network">
+          <span className="ley-deck-count">{view.engine.deckRemaining}</span>
+          <span className="ley-deck-label">LEY</span>
+        </div>
+        {hand.map((card, position) => (
           <button
             key={card.id}
             {...piece(card.id)}
@@ -582,7 +590,13 @@ function CardsEngine({ view, selected, piece }: EngineProps) {
               selected.includes(card.id) && "selected",
               arrivals.has(card.id) && "motion-arrive",
             )}
-            style={delayStyle(staggerDelay(order.get(card.id) ?? 0))}
+            style={
+              {
+                ...delayStyle(staggerDelay(order.get(card.id) ?? 0)),
+                // How far this card slid off the deck to reach its place.
+                "--deal-index": position,
+              } as CSSProperties
+            }
             aria-label={`${card.name} card`}
           >
             <span className="card-type">{kindLabel(card.kind)}</span>

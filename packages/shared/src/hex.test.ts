@@ -4,8 +4,12 @@ import {
   hexDistance,
   hexKey,
   hexNeighbours,
+  hexOutline,
+  hexRegionPath,
+  hexToPixel,
   hexesWithin,
   parseHex,
+  pixelToHex,
 } from "./hex.js";
 
 describe("hex geometry", () => {
@@ -30,5 +34,38 @@ describe("hex geometry", () => {
     expect(parseHex(hexKey({ q: -3, r: 7 }))).toEqual({ q: -3, r: 7 });
     for (const bad of ["", "1", "a,b", "1,2,3", "1, 2", "1.5,2"])
       expect(parseHex(bad)).toBeNull();
+  });
+});
+
+describe("outline geometry", () => {
+  it("keeps only the edges where open ground meets rock", () => {
+    // A lone hex shows all six sides; adding a neighbour hides the shared one.
+    expect(hexOutline([{ q: 0, r: 0 }], 10)).toHaveLength(6);
+    expect(
+      hexOutline(
+        [
+          { q: 0, r: 0 },
+          { q: 1, r: 0 },
+        ],
+        10,
+      ),
+    ).toHaveLength(10);
+    // A hex ringed by neighbours contributes nothing: it is all interior.
+    const ring = hexesWithin({ q: 0, r: 0 }, 1);
+    expect(hexOutline(ring, 10)).toHaveLength(18);
+  });
+
+  it("draws one closed subpath per hex", () => {
+    const path = hexRegionPath(hexesWithin({ q: 0, r: 0 }, 1), 8);
+    expect(path.match(/M/g)).toHaveLength(7);
+    expect(path.match(/Z/g)).toHaveLength(7);
+  });
+
+  it("inverts hexToPixel across the whole map range", () => {
+    for (let q = -20; q <= 20; q++)
+      for (let r = -20; r <= 20; r++)
+        expect(hexKey(pixelToHex(hexToPixel({ q, r }, 11), 11))).toBe(
+          hexKey({ q, r }),
+        );
   });
 });

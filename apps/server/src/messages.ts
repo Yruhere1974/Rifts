@@ -11,6 +11,7 @@ export const joinOptionsSchema = z.object({
 });
 
 const target = z.string().min(1).max(128);
+const hexKey = z.string().regex(/^-?\d+,-?\d+$/);
 export const commandSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("act"),
@@ -53,6 +54,12 @@ export const commandSchema = z.discriminatedUnion("type", [
     target: z.enum(["gate", "relay", "archive", "rift"]).optional(),
   }),
   z.strictObject({ type: z.literal("request"), target }),
+  z.strictObject({
+    type: z.literal("annotate"),
+    label: z.string().min(1).max(60),
+    hexes: z.array(hexKey).min(1).max(12),
+  }),
+  z.strictObject({ type: z.literal("erase"), mark: target }),
   z.strictObject({ type: z.literal("hold") }),
   z.strictObject({ type: z.literal("ready") }),
   z.strictObject({ type: z.literal("upgrade") }),
@@ -65,3 +72,8 @@ export const commandMessageSchema = z.strictObject({
   command: commandSchema,
 });
 export const seatMessageSchema = z.strictObject({ token, seat: seatSchema });
+/**
+ * Pointing is not a rules command. A ping leaves nothing to reconcile, so the
+ * room relays it and the mission never hears about it.
+ */
+export const pingMessageSchema = z.strictObject({ token, hex: hexKey });

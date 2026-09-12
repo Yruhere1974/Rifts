@@ -85,3 +85,100 @@ export function hexToPixel(hex: Hex, radius: number): { x: number; y: number } {
     y: radius * Math.sqrt(3) * (hex.r + hex.q / 2),
   };
 }
+
+/** The six corners of a flat-top hex, clockwise from the eastern vertex. */
+export function hexCorners(
+  hex: Hex,
+  radius: number,
+): { x: number; y: number }[] {
+  const centre = hexToPixel(hex, radius);
+  return Array.from({ length: 6 }, (_, i) => {
+    const angle = (Math.PI / 3) * i;
+    return {
+      x: centre.x + radius * Math.cos(angle),
+      y: centre.y + radius * Math.sin(angle),
+    };
+  });
+}
+
+/**
+ * Which two corners bound the edge shared with each neighbour, indexed to
+ * match `hexNeighbours`. Neighbour normals sit at the edge midpoints, so the
+ * edge for direction i spans the corners thirty degrees either side of it.
+ */
+const edgeCorners: readonly (readonly [number, number])[] = [
+  [0, 1],
+  [5, 0],
+  [4, 5],
+  [3, 4],
+  [2, 3],
+  [1, 2],
+];
+
+export type HexEdge = { x1: number; y1: number; x2: number; y2: number };
+
+/**
+ * The silhouette of a set of hexes: every edge with open ground on one side
+ * and rock on the other. Interior edges are omitted, so a contiguous region
+ * draws as one shape rather than as a grid.
+ */
+export function hexOutline(hexes: Iterable<Hex>, radius: number): HexEdge[] {
+  const open = new Set<string>();
+  const list: Hex[] = [];
+  for (const hex of hexes) {
+    const key = hexKey(hex);
+    if (open.has(key)) continue;
+    open.add(key);
+    list.push(hex);
+  }
+  const edges: HexEdge[] = [];
+  for (const hex of list) {
+    const corners = hexCorners(hex, radius);
+    hexNeighbours(hex).forEach((neighbour, index) => {
+      if (open.has(hexKey(neighbour))) return;
+      const pair = edgeCorners[index];
+      const a = pair && corners[pair[0]];
+      const b = pair && corners[pair[1]];
+      if (a && b) edges.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+    });
+  }
+  return edges;
+}
+
+/** Every hex as a closed subpath, for filling a region as one shape. */
+export function hexRegionPath(hexes: Iterable<Hex>, radius: number): string {
+  const parts: string[] = [];
+  for (const hex of hexes) {
+    const corners = hexCorners(hex, radius);
+    const start = corners[0];
+    if (!start) continue;
+    parts.push(
+      `M${start.x.toFixed(2)} ${start.y.toFixed(2)}` +
+        corners
+          .slice(1)
+          .map((point) => `L${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+          .join("") +
+        "Z",
+    );
+  }
+  return parts.join("");
+}
+
+/** The hex containing a pixel, inverting `hexToPixel`. Rendering only. */
+export function pixelToHex(
+  point: { x: number; y: number },
+  radius: number,
+): Hex {
+  const q = point.x / (radius * 1.5);
+  const r = point.y / (radius * Math.sqrt(3)) - q / 2;
+  const s = -q - r;
+  let rq = Math.round(q);
+  let rr = Math.round(r);
+  const rs = Math.round(s);
+  const dq = Math.abs(rq - q);
+  const dr = Math.abs(rr - r);
+  const ds = Math.abs(rs - s);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds) rr = -rq - rs;
+  return { q: rq, r: rr };
+}

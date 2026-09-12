@@ -2977,3 +2977,288 @@ select {
 .system-module.occupied:hover:not(:disabled) {
   border-color: #8fb0a0;
 }
+
+/* ---- Master map -------------------------------------------------------- */
+/* A planning surface, not a second board. Ground is drawn as one silhouette
+   with no interior detail, so everything with contrast on this page is
+   something a person or the briefing put there. */
+.master-map {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+  padding: 14px 16px 18px;
+}
+.master-map-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.master-map-bar h2 {
+  margin: 0;
+  font-family: "Barlow Condensed", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.master-map-state {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.master-map-tools {
+  display: flex;
+  gap: 6px;
+}
+.master-map-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 3px;
+}
+.master-map-tools button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background-color: #c2d5a51f;
+}
+.master-map-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 14px;
+  min-height: 0;
+  flex: 1;
+}
+.master-map-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 340px;
+  max-height: 74vh;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0c1413;
+  touch-action: none;
+}
+.mm-ground {
+  fill: #16211e;
+  stroke: none;
+}
+.mm-outline line {
+  stroke: #4a5c52;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+/* A standing claim draws as the area it claims; checking it collapses the
+   area to a point, or strikes it through. */
+.mm-brief circle {
+  fill: #c2d5a50a;
+  stroke: #7d8f7d;
+  stroke-width: 0.8;
+  stroke-dasharray: 4 4;
+}
+.mm-brief-pin {
+  fill: #cfe0b4;
+}
+.mm-brief text {
+  fill: #cfe0b4;
+  font-size: 8px;
+  font-family: "Barlow Condensed", sans-serif;
+  letter-spacing: 0.03em;
+}
+.mm-brief-confirmed .mm-brief-pin {
+  fill: var(--accent);
+}
+.mm-brief-struck .mm-brief-pin {
+  fill: #7e6a6a;
+}
+.mm-brief-struck text {
+  fill: #8d7c7c;
+  text-decoration: line-through;
+}
+.mm-report rect {
+  fill: none;
+  stroke: #8fa8bb;
+  stroke-width: 1;
+}
+.mm-report text {
+  fill: #8fa8bb;
+  font-size: 7px;
+  font-family: "Barlow Condensed", sans-serif;
+}
+.mm-mark polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+.mm-mark circle {
+  fill: currentColor;
+}
+.mm-mark text {
+  fill: currentColor;
+  font-size: 8px;
+  font-family: "Barlow Condensed", sans-serif;
+}
+/* A plan that the world has broken says so, rather than looking confident. */
+.mm-mark-blocked polyline {
+  stroke: #d08a7a;
+  stroke-dasharray: 5 4;
+}
+.mm-mark-blocked text {
+  fill: #d08a7a;
+}
+.mm-draft polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  stroke-dasharray: 3 3;
+}
+.mm-draft circle {
+  fill: var(--accent);
+}
+.mm-ping {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rifts-ping var(--motion-ambient) var(--ease-exit) forwards;
+}
+@keyframes rifts-ping {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+.master-map-side {
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+.master-map-side h3 {
+  margin: 14px 0 6px;
+  font-family: "Barlow Condensed", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.master-map-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px;
+}
+.master-map-compose label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.master-map-compose input {
+  background: #0f1817;
+  border: 1px solid var(--line);
+  color: inherit;
+  border-radius: 3px;
+  padding: 6px 8px;
+}
+.master-map-compose-actions {
+  display: flex;
+  gap: 6px;
+}
+.master-map-compose-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  flex: 1;
+  justify-content: center;
+}
+.master-map-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.master-map-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mm-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 1px solid #ffffff10;
+  padding-bottom: 4px;
+  font-size: 0.85rem;
+}
+.mm-row strong {
+  flex: 1;
+  font-weight: 600;
+}
+.mm-row span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.mm-row button {
+  padding: 2px 6px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.mm-row-struck strong {
+  text-decoration: line-through;
+  color: #8d7c7c;
+}
+.mm-row-confirmed span {
+  color: var(--accent);
+}
+@media (max-width: 900px) {
+  .master-map-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .master-map-canvas {
+    max-height: 46vh;
+  }
+}
+
+/* A class with its own display would otherwise beat the UA rule for [hidden]. */
+.cockpit[hidden] {
+  display: none;
+}
+.table-layout[hidden] {
+  display: none;
+}
+
+/* The topbar is one unwrapped row, so narrow screens keep the icons and drop
+   the words. The title attribute still names each control. */
+@media (max-width: 760px) {
+  .control-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+.mm-leader {
+  stroke: #7d8f7d;
+  stroke-width: 0.6;
+}

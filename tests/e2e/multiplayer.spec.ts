@@ -382,3 +382,84 @@ test("four tabs in one browser hold four seats, and the table screen stays publi
     await context.close();
   }
 });
+
+test("the master map is one shared surface, and stays public on a screen", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const context = await browser.newContext({ reducedMotion: "reduce" });
+  try {
+    let roomCode = "";
+    const tabs = [];
+    for (let i = 0; i < 4; i++) {
+      const page = await context.newPage();
+      tabs.push(page);
+      if (roomCode) {
+        await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
+      } else {
+        await page.goto("/");
+        await page
+          .getByRole("button", { name: "Cooperative table", exact: true })
+          .click();
+        await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
+        await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+      }
+      await expect(page.locator(".engine-heading .eyebrow")).toBeVisible({
+        timeout: 20_000,
+      });
+      if (!roomCode)
+        roomCode = (await page.locator(".room-code").innerText()).trim();
+    }
+    await expect(tabs[0]!.locator(".presence-notice")).toHaveCount(0);
+
+    const secrets = await Promise.all(
+      tabs.map((page) => page.locator(".private-objective p").innerText()),
+    );
+
+    // One specialist draws; the rest are looking at the same surface.
+    const author = tabs[0]!;
+    await author.getByRole("button", { name: "Master map" }).click();
+    const map = author.getByRole("region", { name: "Master map" });
+    await map.getByRole("button", { name: "Mark", exact: true }).click();
+    await map.locator(".master-map-canvas").click();
+    await map.getByLabel("Mark label").fill("Regroup here");
+    await map.getByRole("button", { name: "Place mark" }).click();
+    await expect(map.getByText("Regroup here")).toHaveCount(2);
+
+    for (const page of tabs.slice(1)) {
+      await page.getByRole("button", { name: "Master map" }).click();
+      await expect(
+        page
+          .getByRole("region", { name: "Master map" })
+          .getByText("Regroup here"),
+      ).toHaveCount(2, { timeout: 20_000 });
+    }
+
+    // A teammate can erase it: the map belongs to the team, not its author.
+    const other = tabs[1]!;
+    await other
+      .getByRole("region", { name: "Master map" })
+      .getByRole("button", { name: "Erase Regroup here" })
+      .click();
+    await expect(map.getByText("Regroup here")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+
+    // The shared screen shows the same surface and still carries no secrets.
+    const table = await context.newPage();
+    await table.goto(`/?table=1&room=${roomCode}`);
+    await expect(table.locator(".table-room strong")).toHaveText(roomCode);
+    await table.getByRole("button", { name: "Master map" }).click();
+    const shared = table.getByRole("region", { name: "Master map" });
+    await expect(shared.getByText("Relay conduits")).toHaveCount(2, {
+      timeout: 20_000,
+    });
+    // Read-only: a screen holds no seat, so it cannot draw, erase or point.
+    await expect(shared.locator(".master-map-tools")).toHaveCount(0);
+    await expect(shared.locator(".master-map-compose")).toHaveCount(0);
+    const markup = await table.content();
+    for (const secret of secrets) expect(markup).not.toContain(secret);
+  } finally {
+    await context.close();
+  }
+});

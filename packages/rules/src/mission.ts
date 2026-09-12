@@ -1,4 +1,9 @@
-import { missionMap, playableMission, specialistFor } from "@rifts/content";
+import {
+  briefingMarkers,
+  missionMap,
+  playableMission,
+  specialistFor,
+} from "@rifts/content";
 import {
   footprint,
   hexDistance,
@@ -66,6 +71,8 @@ export const facetForAction: Partial<Record<MissionAction, GlitterFacet>> = {
 };
 export type MissionCommand =
   | { type: "share"; target?: MissionLocation | undefined }
+  | { type: "annotate"; label: string; hexes: string[] }
+  | { type: "erase"; mark: string }
   | { type: "allocate"; die: string; facet: DieSlot }
   /**
    * Hold one piece back from this round so it survives the refill. Every
@@ -147,6 +154,30 @@ export type MissionEngine = {
   primed: boolean;
 };
 /** A placed enemy. Everyone can see it: it is standing on the board. */
+/**
+ * Ink on the master map. One hex is a note; two or more are a route, whose
+ * waypoints are costed against the ground rather than drawn as they please.
+ * Marks carry no private information: the surface is public by construction.
+ */
+export type MapMark = {
+  id: string;
+  seat: Seat;
+  label: string;
+  hexes: string[];
+  round: number;
+};
+/**
+ * A mark the mission itself placed. `precision` is authored and visible and
+ * decides how wide the claim draws; whether the mark is true is decided per
+ * match and never leaves the server until somebody walks into the claim.
+ */
+export type MissionBriefing = {
+  id: string;
+  label: string;
+  hex: string;
+  precision: "known" | "inferred" | "uncertain";
+  state: "standing" | "confirmed" | "struck";
+};
 export type MissionEnemy = {
   id: string;
   name: string;
@@ -172,6 +203,14 @@ export type MissionPublicState = {
   requests: { seat: Seat; target: string }[];
   reports: { seat: Seat; location: MissionLocation; text: string }[];
   discoveries: { flankUsed: boolean; cacheUsed: boolean };
+  /**
+   * Open while nobody has committed an action this round. Ink lands only in
+   * this window, which needs no vote and no lock: planning simply stops when
+   * the round starts being spent.
+   */
+  planning: boolean;
+  marks: MapMark[];
+  briefing: MissionBriefing[];
 };
 export type MissionView = MissionPublicState & {
   seat: Seat;
@@ -214,6 +253,9 @@ export type MissionPrivateState = {
 /** Authoritative state only. Send playerView(), never this object, to clients. */
 export type MissionState = MissionPublicState & {
   random: number;
+  markSeq: number;
+  /** Which briefing mark is this match's false one. Never projected. */
+  falseMarker: string | null;
   private: Record<Seat, MissionPrivateState>;
 };
 export type MissionPreview = {
@@ -416,6 +458,102 @@ export function reachable(
   return seen;
 }
 
+/**
+ * Steps from one hex to another for a unit of this size, or null when the
+ * ground does not connect them. Uses the same walk as a real commitment, so a
+ * planned route is costed against the map a move would actually face.
+ */
+export function pathCost(
+  from: Hex,
+  size: number,
+  to: Hex,
+  enemies: readonly MissionEnemy[] = [],
+): number | null {
+  if (hexKey(from) === hexKey(to)) return 0;
+  const reach = reachable(from, size, missionMap.open.length, enemies);
+  return reach.get(hexKey(to)) ?? null;
+}
+export type RouteCost = {
+  hexes: number;
+  commitments: number;
+  blocked: boolean;
+};
+/**
+ * What a drawn route costs its owner: ground to cross, and the engine output
+ * that buys it. A route re-costs whenever the world moves, so a patrol
+ * stepping into a leg turns the plan blocked rather than leaving it looking
+ * confident.
+ */
+export function routeCost(
+  waypoints: readonly Hex[],
+  size: number,
+  enemies: readonly MissionEnemy[] = [],
+): RouteCost {
+  let hexes = 0;
+  for (let i = 1; i < waypoints.length; i++) {
+    const from = waypoints[i - 1];
+    const to = waypoints[i];
+    if (!from || !to) continue;
+    const leg = pathCost(from, size, to, enemies);
+    if (leg === null)
+      return {
+        hexes,
+        commitments: Math.ceil(hexes / missionMap.hexesPerEffect),
+        blocked: true,
+      };
+    hexes += leg;
+  }
+  return {
+    hexes,
+    commitments: Math.ceil(hexes / missionMap.hexesPerEffect),
+    blocked: false,
+  };
+}
+/**
+ * Which briefing mark lies this match. Derived from the seed rather than
+ * drawn from the mission's stream, so adding it cannot shift any existing
+ * seeded outcome, and a practice table stays reproducible.
+ */
+export function falseMarkerFor(seed: number): string | null {
+  const candidates = briefingMarkers.filter((marker) => marker.canLie);
+  if (candidates.length === 0) return null;
+  const mixed = Math.imul((seed >>> 0) ^ 0x9e3779b9, 2246822519) >>> 0;
+  return candidates[mixed % candidates.length]?.id ?? null;
+}
+/**
+ * How close a specialist must get before a claim can be checked. Deliberately
+ * independent of how wide the claim draws: counting the spread here would let
+ * a vague claim resolve from further away than a precise one, which is
+ * backwards. The briefing's spread says how sure planning was; the truth is
+ * still at one hex, and somebody has to stand beside it.
+ */
+export const briefingReach = (size: number): number => size + 1;
+/**
+ * Walking into a claim settles it. A standing mark becomes confirmed, or
+ * struck when it was this match's false one; a struck mark is kept and drawn
+ * through, because "we looked and there is nothing here" is worth as much to
+ * the team as finding something.
+ */
+function resolveBriefing(state: MissionState): void {
+  for (const marker of state.briefing) {
+    if (marker.state !== "standing") continue;
+    const centre = parseHex(marker.hex);
+    if (!centre) continue;
+    const seen = state.players.some(
+      (player) =>
+        hexDistance(player.position, centre) <= briefingReach(player.size),
+    );
+    if (!seen) continue;
+    const lying = marker.id === state.falseMarker;
+    marker.state = lying ? "struck" : "confirmed";
+    append(
+      state,
+      lying
+        ? `Briefing was wrong: ${marker.label} is not there.`
+        : `Briefing confirmed: ${marker.label}.`,
+    );
+  }
+}
 /**
  * A weave alternates Channel and Resonance; Exploit Opening can stand in for
  * either, which is its second use and a real decision against holding it back
@@ -799,6 +937,8 @@ export function createMission(seed = 1): MissionState {
   });
   const state: MissionState = {
     random: Number.isFinite(seed) ? seed >>> 0 : 1,
+    markSeq: 0,
+    falseMarker: falseMarkerFor(Number.isFinite(seed) ? seed : 1),
     round: 1,
     phase: "action",
     instability: 0,
@@ -836,6 +976,15 @@ export function createMission(seed = 1): MissionState {
     requests: [],
     reports: [],
     discoveries: { flankUsed: false, cacheUsed: false },
+    planning: true,
+    marks: [],
+    briefing: briefingMarkers.map((marker) => ({
+      id: marker.id,
+      label: marker.label,
+      hex: hexKey(marker.hex),
+      precision: marker.precision,
+      state: "standing" as const,
+    })),
     private: {
       dice: empty("dice"),
       cards: empty("cards"),
@@ -844,6 +993,8 @@ export function createMission(seed = 1): MissionState {
     },
   };
   for (const seat of missionSeats) refill(state, seat);
+  // Deployment already stands in one claim, so the starting map is honest.
+  resolveBriefing(state);
   return state;
 }
 export function tableView(state: MissionState): MissionTableView {
@@ -866,6 +1017,9 @@ export function tableView(state: MissionState): MissionTableView {
     requests: state.requests,
     reports: state.reports,
     discoveries: state.discoveries,
+    planning: state.planning,
+    marks: state.marks,
+    briefing: state.briefing,
     kits: missionSeats.map((seat) => {
       const e = state.private[seat].engine;
       return {
@@ -903,6 +1057,9 @@ export function playerView(state: MissionState, seat: Seat): MissionView {
     requests: state.requests,
     reports: state.reports,
     discoveries: state.discoveries,
+    planning: state.planning,
+    marks: state.marks,
+    briefing: state.briefing,
     seat,
     engine: p.engine,
     intel: [
@@ -957,6 +1114,18 @@ function commandValid(value: unknown): value is MissionCommand {
     );
   if (c.type === "request")
     return Object.keys(c).length === 2 && typeof c.target === "string";
+  if (c.type === "annotate")
+    return (
+      Object.keys(c).length === 3 &&
+      typeof c.label === "string" &&
+      Array.isArray(c.hexes) &&
+      c.hexes.length > 0 &&
+      c.hexes.every(
+        (hex: unknown) => typeof hex === "string" && parseHex(hex) !== null,
+      )
+    );
+  if (c.type === "erase")
+    return Object.keys(c).length === 2 && typeof c.mark === "string";
   if (c.type === "share")
     return (
       Object.keys(c).every((key) => key === "type" || key === "target") &&
@@ -988,11 +1157,45 @@ function plan(view: MissionView, command: MissionCommand): ActionPlan {
   if (view.phase !== "action") return deny("Mission has ended.");
   const player = view.players.find((p) => p.seat === view.seat);
   if (!player) return deny("Unknown seat.");
-  if (player.ready && command.type !== "share" && command.type !== "request")
+  // Ink, pointing, readings and requests spend no capability, so finishing a
+  // round does not close them.
+  const free = ["share", "request", "annotate", "erase"];
+  if (player.ready && !free.includes(command.type))
     return deny("Round finished. Your engine refreshes when all four finish.");
   const e = view.engine;
   if (command.type !== "act") {
     switch (command.type) {
+      case "annotate": {
+        if (!view.planning)
+          return deny(
+            "The round is being spent. Plans can be drawn again when it ends.",
+          );
+        const label = command.label.trim();
+        if (!label) return deny("Give the mark a label.");
+        if (label.length > 60) return deny("Keep a mark's label short.");
+        if (command.hexes.length > 12)
+          return deny("A route can carry twelve waypoints at most.");
+        const open = new Set(missionMap.open);
+        if (!command.hexes.every((hex) => open.has(hex)))
+          return deny("A mark has to sit on ground someone could stand on.");
+        if (view.marks.length >= 40)
+          return deny("The map is full. Erase something before adding more.");
+        return allow(
+          "None",
+          command.hexes.length > 1
+            ? `Draw a route through ${command.hexes.length} waypoints.`
+            : "Mark this ground for the team.",
+        );
+      }
+      case "erase": {
+        if (!view.planning)
+          return deny(
+            "The round is being spent. The map can be changed again when it ends.",
+          );
+        return view.marks.some((mark) => mark.id === command.mark)
+          ? allow("None", "Remove this mark from the master map.")
+          : deny("That mark is no longer on the map.");
+      }
       case "draw":
         return view.seat !== "bag"
           ? deny("Only the push-your-luck engine draws from a bag.")
@@ -1540,11 +1743,14 @@ export function applyCommand(
       if (command.action === "recover") e.primed = true;
     }
     reduceWorld(next, validation.event);
+    // The round is being spent, so planning is over until it ends.
+    next.planning = false;
     player.holding = false;
     append(
       next,
       `${player.name}: ${command.action} ${command.target}. ${validation.effect} Cost: ${validation.cost}.`,
     );
+    resolveBriefing(next);
   } else {
     switch (command.type) {
       case "draw": {
@@ -1587,6 +1793,33 @@ export function applyCommand(
           next.frequencyKnown = true;
         append(next, `${player.name}: ${validation.effect}`);
         break;
+      case "annotate": {
+        next.markSeq++;
+        next.marks.push({
+          id: `mark-${next.markSeq}`,
+          seat,
+          label: command.label.trim(),
+          hexes: [...command.hexes],
+          round: next.round,
+        });
+        append(
+          next,
+          command.hexes.length > 1
+            ? `${player.name} drew a route: ${command.label.trim()}.`
+            : `${player.name} marked the map: ${command.label.trim()}.`,
+        );
+        break;
+      }
+      case "erase": {
+        const removed = next.marks.find((mark) => mark.id === command.mark);
+        next.marks = next.marks.filter((mark) => mark.id !== command.mark);
+        if (removed)
+          append(
+            next,
+            `${player.name} erased "${removed.label}" from the map.`,
+          );
+        break;
+      }
       case "request":
         next.requests = [
           ...next.requests.filter((r) => r.seat !== seat),
@@ -1652,6 +1885,9 @@ export function applyCommand(
           if (next.phase === "action") {
             next.round++;
             next.requests = [];
+            // A new round opens a fresh planning window: the world has just
+            // moved and the table is stopped together.
+            next.planning = true;
             for (const entry of next.players) {
               entry.ready = false;
               entry.holding = false;

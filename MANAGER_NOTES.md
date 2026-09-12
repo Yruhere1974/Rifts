@@ -29,6 +29,7 @@ The first prototype should prove:
 - Repo operating model: `RATCHETING.md`
 - Class lineup and engine mapping: `docs/product/class-lineup.md`
 - Executable mission details: `docs/product/playable-slice.md`
+- Master map design (not built): `docs/product/master-map.md`
 - Visibility and lifecycle: `docs/architecture/adr-0002-prototype-visibility.md`
 - Critical and comparison reviews: `docs/playtests/prototype-review.md`
 - Local setup and play: `README.md`
@@ -76,6 +77,28 @@ Last local verification (2026-09-09): `npm run check` passed end to end; `npm au
 Adding a web dependency or changing `vite.config.ts` also needs the web dev server restarted, for the same reuse reason. A local game server started before a rules change keeps serving the old view shape, because `npm run dev -w @rifts/server` runs `tsx` without watch and Playwright reuses an existing server. Restart it after touching `packages/rules` or every browser test fails on a stale wire contract.
 
 ## In Flight
+
+- Master map, BUILT on `feature/hex-board`, except the priced extension. `docs/product/master-map.md` is the design and now records what was built. A separate screen carrying the outline of the undercroft and nothing else: no apparatus, no patrols, no units. On it are the mission's own briefing marks, ink the team draws, marks derived from published reports, and transient pings. Reached at `?map=1` from a header control, and mirrored read-only on the table screen. Verification: 53 unit tests and 13 browser tests, including four seats sharing one surface and a shared screen that carries no seat's private text.
+
+- Two rules were decided while building and both are worth keeping. Resolution reach is independent of a claim's drawn spread, because counting the spread let a vague claim resolve from further away than a precise one, and let a wide claim settle from the deployment anchors without anyone walking anywhere. And the planning window needs no vote and no lock: it is open while nobody has committed an action this round, and the first commitment closes it, which suits simultaneous rounds where waiting for a table to agree would be a turn lock in disguise.
+
+- The false briefing mark is derived from the seed by `falseMarkerFor`, deliberately NOT drawn from the mission's RNG stream. Drawing from the stream would shift every existing seeded outcome and break the determinism tests. Anyone adding per-match secrets should do the same.
+
+- Pings are relayed by `MissionRoom` and never enter mission state, because the rules package may not read a clock and a ping leaves nothing to reconcile. `falseMarker` lives on `MissionState` beside `random` and is covered by the existing allowlist discipline, so neither `playerView` nor `tableView` can leak it; there is a test asserting the string never appears in either projection.
+
+- The master map is drawn as SVG rather than through Pixi. It is not a tactile board: it is mostly static, it is mostly text, and real elements give every mark an accessible name and keyboard focus that a canvas would have to reinvent. The console stays mounted behind the map rather than unmounting, so opening it does not tear down and rebuild the board's WebGL context.
+
+- Still design, still withheld: refining a plan as a paid engine action. The recorded shape is free at the round boundary and paid only mid-round, and its two open questions (what a refine buys, and eighth verb versus a shape of `assist`) are unchanged. Do not build it before the surface has been played by people.
+
+- Superseded note, kept for the trail: this entry previously read "designed and written down but deliberately not built". `docs/product/master-map.md`. A separate page carrying the outline of the undercroft and nothing else, on which the only marks are the mission's own briefing markers, ink the team draws, and marks derived from published reports. The visibility rule the owner set is that nothing appears unless it is in everyone's view, and it needs no enforcement machinery because every source is public by construction; the same allowlist discipline as `tableView()` still applies to the projection.
+
+- The two ideas in it worth keeping if anything else is cut. First, a briefing marker's precision and its reliability are separate axes and only precision is visible, so a `known` marker is the most dangerous object on the page: the team trusts it, spends two rounds travelling, and finds rock. Author which markers can lie, seed which one does, so the drama stays designed without spoiling on a second play of a one-mission prototype. Second, a drawn route costs itself against `reachable()` and re-costs when a patrol steps into it, which points the surface straight at the standing balance debt: travel is what lengthened the mission and no player can currently feel it before committing.
+
+- Ink and published reports deliberately both move information. Ink is pointing, free and unread by the game; a report is proving, and only a report fires the paired discoveries. A specialist circling something only they can see is therefore a feature and not a leak, and the two surfaces stop competing.
+
+- Phases follow the game's own timing rather than tidiness. Ink lands only in planning windows, at deployment and at each round boundary, because drawing wants sustained attention and a live round is explicitly built so nobody waits for anybody; pings are always available because pointing has to cost one click. Whoever builds this should know the mission's `phase` is only `"action" | "won" | "lost"` and the `information`/`consequence` names in `packages/rules/src/state.ts` are dead scaffold, so a planning window is new state rather than an existing hook.
+
+- Refining a plan as an engine action is designed in the same document and withheld on purpose. It is what would make the surface load-bearing rather than decorative, but it taxes talking in a game about asymmetric information, so the recorded shape is free at the round boundary and paid only mid-round, putting the cost on impatience instead of on communication. It needs mechanical teeth before it is worth a commitment, and whether it is an eighth verb or a shape of `assist` is the structural decision: the seven actions are a validated invariant and the one-contract claim rests on them.
 
 - Each engine's own small game got a decision, after measuring that two of them did not have one. The measurements, for the record. Cards: the whole hand is always legal as one chain and length is superlinear, so one big play beat every partition (15, against 9 for 2+3 and 5 for five singles) and "play your longest chain" was right nearly always. Dice: over 20k rolls a fresh tray of five always held some combination (pair 37%, triple 21%, run 42%, nothing 0.0%), so reading the roll was a sort, not a choice. Systems: the module was the action and the row was fixed, so the wiring bonus was a coincidence of which actions you happened to need being neighbours. Only the Juicer was already a game.
 

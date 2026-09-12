@@ -12,6 +12,7 @@ import {
   HandHelping,
   Hexagon,
   LockKeyhole,
+  Map,
   MapPin,
   Pause,
   Radio,
@@ -38,6 +39,7 @@ import {
   type Seat,
 } from "@rifts/rules";
 import { missionMap, playableMission, specialistFor } from "@rifts/content";
+import { MasterMap } from "./MasterMap.js";
 import { hexDistance, hexKey, parseHex } from "@rifts/shared";
 import { BoardCanvas } from "./BoardCanvas.js";
 import { EngineConsole, identities } from "./EngineConsole.js";
@@ -98,6 +100,12 @@ const apparatusOf = (site: string) =>
   missionMap.objects.find((object) => object.site === site)?.hex ??
   missionMap.sites.relay;
 
+/** The master map is its own screen, and a linkable one. */
+const initialScreen = (): "console" | "map" =>
+  new URLSearchParams(window.location.search).get("map") === "1"
+    ? "map"
+    : "console";
+
 const joinLink = (): { room: string; seat: Seat } | null => {
   const params = new URLSearchParams(window.location.search);
   const room = params.get("room");
@@ -111,6 +119,7 @@ export function App() {
   const game = useMission();
   const { view, seat } = game;
   const [link] = useState(joinLink);
+  const [screen, setScreen] = useState<"console" | "map">(initialScreen);
   // Selecting an objective means selecting its apparatus: the middle of the
   // room is no longer a place anyone can work from.
   const [selected, setSelected] = useState(hexKey(apparatusOf("relay")));
@@ -356,8 +365,28 @@ export function App() {
               title="Open the shared table screen"
             >
               <Tv size={14} />
-              Table screen
+              <span className="control-label">Table screen</span>
             </a>
+          )}
+          {view && (
+            <button
+              className="table-link"
+              aria-pressed={screen === "map"}
+              title="Master map"
+              onClick={() => {
+                const next = screen === "map" ? "console" : "map";
+                setScreen(next);
+                const url = new URL(window.location.href);
+                if (next === "map") url.searchParams.set("map", "1");
+                else url.searchParams.delete("map");
+                window.history.replaceState(null, "", url);
+              }}
+            >
+              <Map size={14} />
+              <span className="control-label">
+                {screen === "map" ? "Console" : "Master map"}
+              </span>
+            </button>
           )}
           <button
             className="icon-button"
@@ -411,7 +440,22 @@ export function App() {
               : `${game.onlineSeats.length} / 4 specialists connected. Share this room code to assemble the team: ${game.roomId}`}
           </div>
         )}
-      <div className="cockpit">
+      {view && screen === "map" && (
+        <MasterMap
+          surface={view}
+          seat={seat}
+          size={view.players.find((p) => p.seat === seat)?.size ?? 1}
+          pings={game.pings}
+          onAnnotate={(label, hexes) =>
+            game.send({ type: "annotate", label, hexes })
+          }
+          onErase={(mark) => game.send({ type: "erase", mark })}
+          onPing={game.ping}
+        />
+      )}
+      {/* Kept mounted rather than unmounted: remounting would tear down and
+          rebuild the board's WebGL context every time the map is opened. */}
+      <div className="cockpit" hidden={view !== null && screen === "map"}>
         <div className="world-layout">
           <section className="world" aria-label="Shared world">
             <div className="world-topline">

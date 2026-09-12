@@ -25,6 +25,7 @@ import {
   worldPressure,
   reachable,
   routingCapacity,
+  routeCost,
   siteAt,
   tableView,
   type GlitterFacet,
@@ -1226,5 +1227,179 @@ describe("Greyhaven mission", () => {
     s = action(s, "cards", "investigate", "archive", []);
     expect(s.frequencyKnown).toBe(true);
     expect(s.resources.knowledge).toBe(1);
+  });
+});
+
+describe("master map", () => {
+  const relayHex = hexKey(missionMap.sites.relay);
+
+  it("opens carrying the briefing and nothing the team has not put there", () => {
+    const state = createMission(7);
+    expect(state.marks).toEqual([]);
+    expect(state.planning).toBe(true);
+    expect(state.briefing.length).toBeGreaterThan(0);
+    // Every mark is the mission's own, and each one names real ground.
+    for (const marker of state.briefing)
+      expect(missionMap.open).toContain(marker.hex);
+  });
+
+  it("never projects which briefing mark is the false one", () => {
+    const state = createMission(3);
+    expect(state.falseMarker).not.toBeNull();
+    const view = playerView(state, "dice") as Record<string, unknown>;
+    const table = tableView(state) as Record<string, unknown>;
+    expect(view.falseMarker).toBeUndefined();
+    expect(table.falseMarker).toBeUndefined();
+    expect(JSON.stringify(view)).not.toContain("falseMarker");
+    expect(JSON.stringify(table)).not.toContain("falseMarker");
+  });
+
+  it("picks the liar from the seed without disturbing the engines", () => {
+    // Same seed, same lie; and the dealt engines are untouched by the choice.
+    expect(createMission(11).falseMarker).toBe(createMission(11).falseMarker);
+    const seeds = [1, 2, 3, 4, 5, 6, 7, 8].map(
+      (seed) => createMission(seed).falseMarker,
+    );
+    expect(new Set(seeds).size).toBeGreaterThan(1);
+    for (const id of seeds) {
+      const marker = state0.briefing.find((entry) => entry.id === id);
+      expect(marker, `${id} is a briefing mark`).toBeDefined();
+    }
+  });
+  const state0 = createMission(1);
+
+  it("carries ink to every seat and to the shared screen", () => {
+    let state = createMission(5);
+    state = act(state, "cards", {
+      type: "annotate",
+      label: "Hold this hall",
+      hexes: [relayHex],
+    });
+    const mark = state.marks[0]!;
+    expect(mark.seat).toBe("cards");
+    expect(mark.label).toBe("Hold this hall");
+    // Public by construction: the surface is the same for everyone.
+    for (const seat of missionSeats)
+      expect(playerView(state, seat).marks).toHaveLength(1);
+    expect(tableView(state).marks).toHaveLength(1);
+  });
+
+  it("lets anyone erase anyone's mark", () => {
+    let state = createMission(5);
+    state = act(state, "cards", {
+      type: "annotate",
+      label: "Mine",
+      hexes: [relayHex],
+    });
+    state = act(state, "bag", { type: "erase", mark: state.marks[0]!.id });
+    expect(state.marks).toEqual([]);
+  });
+
+  it("refuses a mark that is not on ground someone could stand on", () => {
+    const state = createMission(5);
+    const result = applyCommand(state, "dice", {
+      type: "annotate",
+      label: "Inside the rock",
+      hexes: ["900,900"],
+    });
+    expect(result.error).toMatch(/ground/i);
+    expect(result.state.marks).toEqual([]);
+  });
+
+  it("closes the planning window when the round starts being spent", () => {
+    let state = createMission(5);
+    expect(state.planning).toBe(true);
+    state = act(state, "dice", {
+      type: "act",
+      action: "acquire",
+      target: "power",
+      pieces: [piece(state, "dice")],
+    });
+    expect(state.planning).toBe(false);
+    const refused = applyCommand(state, "cards", {
+      type: "annotate",
+      label: "Too late",
+      hexes: [relayHex],
+    });
+    expect(refused.error).toMatch(/round is being spent/i);
+    // Pointing is unaffected: it is not a command at all.
+    for (const seat of missionSeats)
+      state = act(state, seat, { type: "ready" });
+    expect(state.planning).toBe(true);
+    expect(state.round).toBe(2);
+  });
+
+  it("settles a claim when somebody walks into it", () => {
+    const state = createMission(1);
+    const relay = state.briefing.find((entry) => entry.id === "brief-relay");
+    // The team deploys inside the relay claim, so it is already settled.
+    expect(relay?.state).not.toBe("standing");
+    const far = state.briefing.find((entry) => entry.id === "brief-cache");
+    expect(far?.state).toBe("standing");
+  });
+
+  it("strikes the false mark, and confirms a true one, on arrival", () => {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const start = createMission(seed);
+      const liar = start.falseMarker!;
+      // Nothing the team has not reached is settled at deployment.
+      const unreached = start.briefing.filter(
+        (entry) => entry.state === "standing",
+      );
+      expect(unreached.length).toBeGreaterThan(0);
+      for (const marker of unreached) {
+        const walked = structuredClone(start);
+        walked.players[1]!.position = parseHex(marker.hex)!;
+        // Committing anything re-checks the claims the team now stands in.
+        const after = act(walked, "cards", {
+          type: "act",
+          action: "acquire",
+          target: "power",
+          pieces: [piece(walked, "cards")],
+        });
+        expect(
+          after.briefing.find((entry) => entry.id === marker.id)?.state,
+          `${marker.id} on seed ${seed}`,
+        ).toBe(marker.id === liar ? "struck" : "confirmed");
+      }
+    }
+  });
+
+  it("keeps a struck mark on the map rather than deleting it", () => {
+    const start = createMission(2);
+    const marker = start.briefing.find(
+      (entry) => entry.id === start.falseMarker,
+    )!;
+    const walked = structuredClone(start);
+    walked.players[1]!.position = parseHex(marker.hex)!;
+    const after = act(walked, "cards", {
+      type: "act",
+      action: "acquire",
+      target: "power",
+      pieces: [piece(walked, "cards")],
+    });
+    expect(after.briefing).toHaveLength(start.briefing.length);
+    expect(after.briefing.find((e) => e.id === marker.id)?.state).toBe(
+      "struck",
+    );
+    // Several claims can settle at once, so the notice is somewhere in the log.
+    expect(after.log.some((entry) => /wrong/i.test(entry.text))).toBe(true);
+  });
+
+  it("costs a drawn route, and calls it blocked when a patrol holds it", () => {
+    const state = createMission(1);
+    const from = missionMap.deploy.cards;
+    const gate = missionMap.sites.gate;
+    const open = routeCost([from, missionMap.sites.relay], 1, []);
+    expect(open.blocked).toBe(false);
+    expect(open.hexes).toBeGreaterThan(0);
+    expect(open.commitments).toBe(
+      Math.ceil(open.hexes / missionMap.hexesPerEffect),
+    );
+    // The gate is held, so the same ground prices differently with patrols on it.
+    const guarded = routeCost([from, gate], 1, state.enemies);
+    const clear = routeCost([from, gate], 1, []);
+    expect(clear.blocked).toBe(false);
+    expect(guarded.blocked).toBe(true);
   });
 });

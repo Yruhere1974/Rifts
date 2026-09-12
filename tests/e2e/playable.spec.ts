@@ -426,3 +426,63 @@ for (const viewport of [
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
+
+test("the master map carries the briefing and the team's own marks", async ({
+  page,
+}) => {
+  await deploy(page);
+  await page.getByRole("button", { name: "Master map" }).click();
+  const map = page.getByRole("region", { name: "Master map" });
+  await expect(map).toBeVisible();
+  // The console is not merely behind the map: it is out of the page entirely.
+  await expect(page.locator(".cockpit")).toBeHidden();
+  // The page is linkable and survives a reload.
+  expect(page.url()).toContain("map=1");
+
+  // The mission's own marks are there before anyone has drawn anything, on
+  // the drawing and in the list beside it.
+  await expect(map.getByText("Relay conduits")).toHaveCount(2);
+  await expect(map.getByText("Nothing drawn yet.")).toBeVisible();
+
+  // Ground is one silhouette: no apparatus, no patrols, no units.
+  await expect(map.locator(".mm-ground")).toHaveCount(1);
+  await expect(map.locator(".unit, .enemy-token")).toHaveCount(0);
+
+  // Draw a mark: choose the tool, select ground, label it, place it.
+  await map.getByRole("button", { name: "Mark", exact: true }).click();
+  // The centre of the drawing is the relay chamber, which is open ground.
+  await map.locator(".master-map-canvas").click();
+  await expect(map.getByText("One hex selected.")).toBeVisible();
+  await map.getByLabel("Mark label").fill("Watch this hall");
+  await map.getByRole("button", { name: "Place mark" }).click();
+  await expect(map.getByText("Watch this hall")).toHaveCount(2);
+
+  // Anyone can take it off again.
+  await map.getByRole("button", { name: "Erase Watch this hall" }).click();
+  await expect(map.getByText("Nothing drawn yet.")).toBeVisible();
+});
+
+test("ink belongs to the planning window, and pointing does not", async ({
+  page,
+}) => {
+  await deploy(page);
+  await page.getByRole("button", { name: "Master map" }).click();
+  const map = page.getByRole("region", { name: "Master map" });
+  await expect(map.getByText(/Planning window open/)).toBeVisible();
+
+  // Spend the round, which is what closes planning.
+  await page.getByRole("button", { name: "Console" }).click();
+  await drive.selectAnyPiece(page);
+  await commit(page, "Acquire");
+
+  await page.getByRole("button", { name: "Master map" }).click();
+  await expect(map.getByText(/round is being spent/i)).toBeVisible();
+  await expect(
+    map.getByRole("button", { name: "Mark", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    map.getByRole("button", { name: "Route", exact: true }),
+  ).toBeDisabled();
+  // Pointing is never a commitment, so it stays available all round.
+  await expect(map.getByRole("button", { name: "Point" })).toBeEnabled();
+});

@@ -2,6 +2,7 @@ import { z } from "zod";
 export * from "./mission.js";
 export * from "./specialists.js";
 export * from "./map.js";
+export * from "./briefing.js";
 
 export const scenarioSchema = z.strictObject({
   id: z.string().min(1),

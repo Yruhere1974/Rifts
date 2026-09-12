@@ -39,8 +39,16 @@ function persistentClientKey(): string {
   return key;
 }
 
+/** A relayed point at the map. Transient: it is never part of mission state. */
+export type MissionPing = { id: number; seat: Seat; hex: string };
+
+/** How long a ping stays visible before it fades on its own. */
+export const pingLifetimeMs = 2600;
+
 export function useMission(): {
   view: MissionView | null;
+  pings: MissionPing[];
+  ping: (hex: string) => void;
   seat: Seat;
   status: string;
   error: string | null;
@@ -63,6 +71,9 @@ export function useMission(): {
   const [mode, setMode] = useState<Mode | null>(null);
   const [onlineSeats, setOnlineSeats] = useState<Seat[]>([]);
   const [started, setStarted] = useState(false);
+  const [pings, setPings] = useState<MissionPing[]>([]);
+  const pingSeq = useRef(0);
+  const pingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const roomRef = useRef<Room | null>(null);
   const tokenRef = useRef<string | null>(null);
   const generation = useRef(0);
@@ -141,6 +152,21 @@ export function useMission(): {
           setStatus("connected");
           setError(null);
         });
+        room.onMessage<{ seat: Seat; hex: string }>("ping", (message) => {
+          if (!active()) return;
+          pingSeq.current += 1;
+          const entry = { id: pingSeq.current, ...message };
+          setPings((current) => [...current, entry]);
+          pingTimers.current.push(
+            setTimeout(
+              () =>
+                setPings((current) =>
+                  current.filter((item) => item.id !== entry.id),
+                ),
+              pingLifetimeMs,
+            ),
+          );
+        });
         room.onMessage<{ message: string }>("error", (message) => {
           if (active()) setError(message.message);
         });
@@ -175,20 +201,23 @@ export function useMission(): {
     [reset],
   );
 
-  const transmit = useCallback((type: "command" | "seat", payload: object) => {
-    const room = roomRef.current;
-    const token = tokenRef.current;
-    if (!room || !token) {
-      setError("Connect to a mission before sending commands.");
-      return;
-    }
-    try {
-      setError(null);
-      room.send(type, { token, ...payload });
-    } catch (cause) {
-      setError(errorMessage(cause));
-    }
-  }, []);
+  const transmit = useCallback(
+    (type: "command" | "seat" | "ping", payload: object) => {
+      const room = roomRef.current;
+      const token = tokenRef.current;
+      if (!room || !token) {
+        setError("Connect to a mission before sending commands.");
+        return;
+      }
+      try {
+        setError(null);
+        room.send(type, { token, ...payload });
+      } catch (cause) {
+        setError(errorMessage(cause));
+      }
+    },
+    [],
+  );
 
   const send = useCallback(
     (command: MissionCommand) => transmit("command", { command }),
@@ -198,12 +227,18 @@ export function useMission(): {
     (nextSeat: Seat) => transmit("seat", { seat: nextSeat }),
     [transmit],
   );
+  const ping = useCallback(
+    (hex: string) => transmit("ping", { hex }),
+    [transmit],
+  );
 
   useEffect(
     () => () => {
       // Deliberately no generation bump: a remounted effect would otherwise
       // orphan a connection that is still being established.
       clearTimeout(timer.current);
+      for (const handle of pingTimers.current) clearTimeout(handle);
+      pingTimers.current = [];
       closeRoom(roomRef.current);
       roomRef.current = null;
       tokenRef.current = null;
@@ -213,6 +248,8 @@ export function useMission(): {
 
   return {
     view,
+    pings,
+    ping,
     seat,
     status,
     error,

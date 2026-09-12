@@ -23,9 +23,19 @@ Open **http://localhost:5174**. The game server uses port **2568**, proxied thro
 
 Choose **Solo table** to explore all four seats, or **Cooperative table** to create a room and share its room code. Seat ownership is per browser tab, so four tabs on one machine can hold four different specialists, as can four separate devices. Reloading a tab reclaims its seat; closing it releases the claim. All four must join before spending capability. Reading and requesting help are available while assembling the team.
 
+### Master Map
+
+**Master map** in the header opens a separate planning screen, or visit `?map=1`. It shows the outline of the undercroft and nothing else: no apparatus, no patrols, no units. The only things on it are marks somebody put there.
+
+The mission places its own, from the briefing. How tightly a mark draws is how sure planning was — a point, a small area, or a soft region. Whether it is _true_ is not shown. Walking a specialist up to a mark settles it: it is confirmed, or struck through because the briefing was wrong. One mark per match is wrong, and which one depends on the table.
+
+Draw during a planning window, which is open at deployment and again after every world response, and closes when the round starts being spent. **Mark** labels one hex; **Route** strings waypoints together and prices them in hexes and commitments, turning red when a patrol moves into the line. Ink stays until somebody erases it, and anyone can erase anything. **Point** works at any time and fades on its own.
+
+Drawing is pointing, not proving. It costs nothing and the game does not read it; only publishing a location assessment is evidence, and only evidence triggers a team discovery.
+
 ### Table Screen
 
-A cooperative room can also be mirrored on a shared screen. Open **Table screen** in the header, or visit `/?table=1&room=<code>` directly. It shows the board, objective, instability, reserves, crew status and field log, and offers a QR code per open seat so a phone can join by scanning. The table screen receives a strictly public projection: it holds no seat, sends no commands, and never receives any specialist's private engine, readings or ambition.
+A cooperative room can also be mirrored on a shared screen. Open **Table screen** in the header, or visit `/?table=1&room=<code>` directly. It shows the board or the master map, objective, instability, reserves, crew status and field log, and offers a QR code per open seat so a phone can join by scanning. The table screen receives a strictly public projection: it holds no seat, sends no commands, and never receives any specialist's private engine, readings or ambition.
 
 Phones need a network address rather than `localhost`. `npm run dev:web` binds the LAN by default and prints a `Network:` URL; open the table screen at that address and the QR codes resolve for other devices. The screen warns when it is on a loopback host whose codes cannot work.
 
@@ -33,9 +43,9 @@ Phones need a network address rather than `localhost`. `npm run dev:web` binds t
 
 The **?** beside each engine heading opens that specialist's rules reference: components, effect values, restrictions, cooperation examples, and the core tradeoff. The reference's specialist selector lets you inspect teammates' public rules without changing your seat. Expand **Shared actions and team rounds** for the common rules. The reference does not pause the match or reveal private state.
 
-For a first game, choose **Solo table**, check **Guided tutorial / learn all four specialists**, then **Deploy to Greyhaven**. Twelve lessons guide real actions through a shared victory. A yellow pulsing outline marks the expected control, starting with the correct specialist when necessary; reduced-motion settings use a steady outline. **Show me where** scrolls to and focuses that control; the compass in the header pauses or resumes the guide. On mobile, **Training** returns to the current lesson. You can revisit or skip lessons without altering the match. Tutorial progress lasts for the current table, not across reloads.
+For a first game, choose **Solo table**, check **Guided tutorial / learn all four specialists**, then **Deploy to Greyhaven**. Fourteen lessons guide real actions through a shared victory, including two on the hex map itself: how far a commitment carries you, and why a large specialist has fewer routes than a small one. A yellow pulsing outline marks the expected control, starting with the correct specialist when necessary; reduced-motion settings use a steady outline. **Show me where** scrolls to and focuses that control; the compass in the header pauses or resumes the guide. On mobile, **Training** returns to the current lesson. You can revisit or skip lessons without altering the match. Tutorial progress lasts for the current table, not across reloads.
 
-Select a location on the board. Select dice, cards, or placement markers — or push the Juicer's bag for a surge — then choose a shared action. The commitment preview shows the authoritative rule's cost and effect. Components are not consumed until commitment.
+The board is a hex map. Select an objective from the strip beneath it, or a hex directly, to choose where to act; when Move is staged, the hexes your commitment could reach are highlighted. Select dice, cards, or placement markers — or push the Juicer's bag for a surge — then choose a shared action. The commitment preview shows the authoritative rule's cost and effect. Components are not consumed until commitment.
 
 Restore the relay to improve everyone's stabilization output. Combine Glitter Boy's and Ley Line Walker's breach readings, or investigate, to establish safe timing. Request help when needed, and preserve a die, card, token, or marker to respond to another player's action. Each core can become a permanent personal upgrade or two shared Power.
 
@@ -59,6 +69,7 @@ The check runs formatting, type-aware lint, strict TypeScript (including browser
 - [Original game concept](docs/product/cooperative-asymmetric-board-game-concept.md)
 - [Class lineup and engine mapping](docs/product/class-lineup.md)
 - [Playable slice rules and acceptance evidence](docs/product/playable-slice.md)
+- [Master map design](docs/product/master-map.md)
 - [Prototype visibility and room lifecycle](docs/architecture/adr-0002-prototype-visibility.md)
 - [Critical review and comparison notes](docs/playtests/prototype-review.md)
 - [Stack decision](docs/architecture/adr-0001-web-app-stack.md)

@@ -209,13 +209,12 @@ h3 {
   height: 100%;
 }
 .map-labels {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 7px;
+  margin-top: 8px;
 }
 .location-pin {
-  position: absolute;
-  transform: translate(-50%, 5px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -230,7 +229,7 @@ h3 {
   box-shadow: 0 4px 14px #07100d55;
 }
 .location-pin:active:not(:disabled) {
-  transform: translate(-50%, 6px);
+  transform: translateY(1px);
 }
 .location-pin .pin-icon {
   display: none;
@@ -989,6 +988,12 @@ select {
   outline-offset: 3px;
   transform: translateY(-3px);
 }
+/* Tokens became buttons when holding arrived, so they need their own hover:
+   the generic one washes the token out to the panel's background. */
+.bag-token:hover:not(:disabled) {
+  background-color: #8dbb9e;
+  border-color: #d7e6d7;
+}
 .risk-track {
   margin-top: 9px;
   display: flex;
@@ -1046,9 +1051,6 @@ select {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
-}
-.surge-note {
-  color: #c3b98d;
 }
 .finish-consequence {
   display: flex;
@@ -2136,4 +2138,1127 @@ select {
 
 .table-link {
   text-decoration: none;
+}
+
+/* ---- Motion vocabulary ----
+   One shared language so the four engines and the board feel like one game.
+
+   Principles:
+   - Physical, not cartoon. Components have weight, arrive, and stay put.
+     Nothing floats, and nothing bounces more than once.
+   - Motion reveals, it never decides. The server has already resolved the
+     outcome; animation shows it landing.
+   - Motion carries information only where the rules do. Rising risk on the
+     push-your-luck engine is the one place agitation means something.
+   - Restraint. This is a tabletop, not a slot machine.
+
+   The global prefers-reduced-motion block above disables all of this, so
+   every class here degrades to a static end state on its own. */
+:root {
+  --motion-instant: 90ms;
+  --motion-quick: 180ms;
+  --motion-settle: 320ms;
+  --motion-travel: 520ms;
+  --motion-ambient: 1600ms;
+  --motion-stagger: 40ms;
+  --ease-settle: cubic-bezier(0.2, 0.9, 0.25, 1);
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  /* Crossing ground, not arriving. A settling curve front-loads so hard that
+     a travelling piece reads as a teleport followed by a crawl. */
+  --ease-travel: cubic-bezier(0.45, 0.05, 0.55, 0.95);
+}
+
+/* Arriving: dealt, rolled, drawn. Comes down and stays down. */
+@keyframes rifts-settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(-9px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.motion-settle {
+  animation: rifts-settle-in var(--motion-settle) var(--ease-enter) both;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+/* Seating: a deliberate placement. Snaps, does not drift. */
+@keyframes rifts-seat {
+  0% {
+    transform: scale(1.07);
+  }
+  100% {
+    transform: none;
+  }
+}
+.motion-seat {
+  animation: rifts-seat var(--motion-quick) var(--ease-settle) both;
+}
+
+/* Spending: a component leaves the kit for the world. */
+@keyframes rifts-commit-out {
+  to {
+    opacity: 0;
+    transform: translateY(5px) scale(0.92);
+  }
+}
+.motion-commit {
+  animation: rifts-commit-out var(--motion-quick) var(--ease-exit) both;
+}
+
+/* One-shot emphasis: a value changed and should be noticed once. */
+@keyframes rifts-flash {
+  0% {
+    filter: brightness(1);
+  }
+  35% {
+    filter: brightness(1.7);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+.motion-flash {
+  animation: rifts-flash var(--motion-settle) var(--ease-settle) both;
+}
+
+/* A counter taking on more. Emphasis without displacement. */
+@keyframes rifts-surge {
+  0% {
+    transform: none;
+  }
+  40% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: none;
+  }
+}
+.motion-surge {
+  animation: rifts-surge var(--motion-settle) var(--ease-settle) both;
+  transform-origin: left center;
+}
+
+/* Escalation. Amplitude is set by the caller through --motion-amplitude, so
+   the same loop reads as a hum or as a warning. */
+@keyframes rifts-tremor {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(calc(var(--motion-amplitude, 1px) * -1), 0, 0);
+  }
+  75% {
+    transform: translate3d(var(--motion-amplitude, 1px), 0, 0);
+  }
+}
+.motion-tremor {
+  animation: rifts-tremor var(--motion-tempo, var(--motion-ambient)) linear
+    infinite;
+}
+
+/* A current running through connected parts. */
+@keyframes rifts-current {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+.motion-current {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--motion-current-color, #e3d79766) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: rifts-current var(--motion-ambient) linear infinite;
+}
+
+/* ---- Shared world motion ----
+   The team sidebar mirrors state the server has already resolved, so every cue
+   here reveals a change that has landed. None of them loop, none of them cover
+   a control, and none of them gate a click: rounds are simultaneous and another
+   specialist may act at any point during one. The vocabulary above supplies all
+   of them except the track cell, which needs a form of its own. */
+
+/* A track cell taking the charge: dark, flares, cools into its filled colour.
+   Backwards fill holds a newly filled cell dim through its stagger delay, so a
+   multi-cell gain reads left to right rather than arriving all at once. */
+@keyframes rifts-ignite {
+  0% {
+    filter: brightness(0.42);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  30% {
+    filter: brightness(1.85);
+    box-shadow: 0 0 7px 1px var(--motion-glow, #bdcd9c);
+  }
+  100% {
+    filter: brightness(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.motion-ignite {
+  animation: rifts-ignite var(--motion-settle) var(--ease-settle) both;
+  animation-delay: var(--motion-delay, 0ms);
+}
+/* ---- Engine console motion ----
+   The four consoles speaking the vocabulary above. Nothing here restyles an
+   existing rule; the few repeated selectors only establish the positioning
+   contexts the one-shot overlays need.
+
+   The global prefers-reduced-motion block disables every animation below, so
+   each overlay is also invisible at rest: an element that exists only to fade
+   out must not be left painted when its animation never runs. */
+.dice-tray,
+.card-hand,
+.token-tray,
+.bag-engine {
+  position: relative;
+}
+
+/* Arriving, for components that already carry a transform of their own. This
+   is `rifts-settle-in` expressed through the independent translate/scale
+   properties, so it composes with the `transform` that .die.selected,
+   .bag-token.selected and :hover set, and with `backwards` fill so the stagger
+   delay holds the start without pinning the end. */
+@keyframes rifts-arrive {
+  from {
+    opacity: 0;
+    translate: 0 -9px;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+.motion-arrive {
+  animation: rifts-arrive var(--motion-settle) var(--ease-enter) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+/* Dice: a steady sheen marks the dice that can Engage. It never pulses; the
+   point is reading the whole tray at a glance, not drawing the eye to one. */
+.die.can-engage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  pointer-events: none;
+  background: linear-gradient(
+    152deg,
+    #ffffffb5 0%,
+    #ffffff2e 33%,
+    #ffffff00 57%
+  );
+  box-shadow: inset 0 0 0 1px #b98f3f66;
+}
+
+/* Dice: committed dice unmount, so the spend is one flash across the tray. */
+@keyframes rifts-tray-spend {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.tray-spend {
+  position: absolute;
+  inset: -4px;
+  border-radius: 9px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    92deg,
+    #f0e2ae00 0%,
+    #f0e2ae33 46%,
+    #f0e2ae00 100%
+  );
+  animation: rifts-tray-spend var(--motion-settle) var(--ease-exit) both;
+}
+
+/* Cards: the weave. One Channel plus one Resonance is the only legal pairing,
+   so it is the only thing that draws a thread. The thread is drawn once, then
+   kept gently alive by a single bead running Channel to Resonance. */
+.card-weave {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+@keyframes rifts-weave-draw {
+  from {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 0.85;
+  }
+}
+.weave-thread {
+  fill: none;
+  stroke: #d9c0ef;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 5px #b98fd8aa);
+  animation: rifts-weave-draw var(--motion-settle) var(--ease-enter) both;
+}
+@keyframes rifts-weave-flow {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.weave-spark {
+  fill: none;
+  stroke: #fbf1ff;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 0.07 0.93;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 4px #e8d2ff);
+  animation: rifts-weave-flow calc(var(--motion-ambient) * 1.6) linear infinite;
+  animation-delay: var(--motion-settle);
+}
+@keyframes rifts-weave-node {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+.weave-node {
+  fill: #f1e4ff;
+  opacity: 0.85;
+  animation: rifts-weave-node calc(var(--motion-ambient) * 1.2) ease-in-out
+    infinite;
+}
+
+/* Bag: a drawn token is a single beat, not a dealt hand, so it lands quicker
+   than the trays that cascade. */
+.bag-token.motion-arrive {
+  animation-duration: var(--motion-quick);
+}
+
+/* Bag: the one place agitation is information. The live bust band tunes the
+   shared tremor, so the panel hums while the odds are safe and is visibly
+   restless by REDLINE. Small numbers on purpose: this has to be liveable for
+   a whole round, and the odds themselves are still printed underneath. */
+/* The agitation sits on the risk indicator, never on the panel that holds the
+   Push button: a permanently moving ancestor is never stable enough to click,
+   and a control that will not hold still is the opposite of restraint. */
+.bag-engine[data-band="NOMINAL"] {
+  --motion-amplitude: 0.4px;
+  --motion-tempo: 2400ms;
+}
+.bag-engine[data-band="AMPED"] {
+  --motion-amplitude: 0.85px;
+  --motion-tempo: 1350ms;
+}
+.bag-engine[data-band="REDLINE"] {
+  --motion-amplitude: 1.5px;
+  --motion-tempo: 740ms;
+}
+.bag-engine[data-band="BURNOUT"] {
+  --motion-amplitude: 2.4px;
+  --motion-tempo: 460ms;
+}
+
+/* Bag: burnout. The surge is destroyed, so it dies on screen instead of
+   vanishing. The ghosts deliberately do not reuse .bag-token: that class is
+   the count of a live surge, and the e2e drive reads it as one. */
+.surge-loss {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  pointer-events: none;
+}
+/* Out of flow, or the panel's flex gap would leave a hole beside the tray. */
+.burnout {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+@keyframes rifts-surge-lost {
+  from {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    translate: 0 17px;
+    rotate: -9deg;
+    scale: 0.82;
+  }
+}
+.lost-token {
+  width: 53px;
+  height: 53px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0;
+  background: #6d4238;
+  border: 3px solid #b8724f;
+  box-shadow: 0 3px 0 #46231c;
+  animation: rifts-surge-lost calc(var(--motion-settle) * 1.3) var(--ease-exit)
+    both;
+  animation-delay: var(--motion-delay, 0ms);
+}
+@keyframes rifts-burnout-flash {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.burnout-flash {
+  position: absolute;
+  inset: -8px;
+  border-radius: 14px;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(115% 130% at 26% 42%, #ff8a4c4d, #ff8a4c00 64%);
+  animation: rifts-burnout-flash calc(var(--motion-settle) * 1.4)
+    var(--ease-exit) both;
+}
+
+/* Bag: the hazard is not spent, it goes back in. Players forget that rule, so
+   the token is walked home rather than explained again. */
+@keyframes rifts-hazard-return {
+  0% {
+    opacity: 0;
+    translate: 150px 6px;
+    scale: 1.2;
+  }
+  15% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    translate: 4px 34px;
+    scale: 0.35;
+  }
+}
+.hazard-return {
+  position: absolute;
+  left: 31px;
+  top: 24px;
+  width: 29px;
+  height: 29px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  color: #ffdcc6;
+  background: #8c3f2a;
+  border: 2px solid #d97c56;
+  animation: rifts-hazard-return calc(var(--motion-travel) * 1.1)
+    var(--ease-settle) both;
+  animation-delay: var(--motion-settle);
+}
+
+/* Systems: the current runs left to right through the modules still open, so
+   priming reads as sequencing toward the next placement rather than as a line
+   of text. Occupied modules are opaque and mask it, which is the point. */
+.system-modules.motion-current {
+  --motion-current-color: #8fd3d05c;
+  border-radius: 4px;
+}
+
+/* ---- Cockpit layout ----
+   The player's own page is a cockpit, not a copy of the table. The engine gets
+   the middle and the most room, because that is where a player actually spends
+   their attention; the map beside it is a local view of what is within reach
+   and what is beside them, and the whole board lives on the shared screen. */
+.cockpit {
+  display: grid;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr) minmax(
+      230px,
+      280px
+    );
+  align-items: stretch;
+}
+.world-layout {
+  display: contents;
+}
+.cockpit > .world-layout > .world {
+  grid-column: 1;
+  grid-row: 1;
+  border-right: 1px solid var(--line);
+}
+.cockpit > .player-area {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+.cockpit > .world-layout > .team-sidebar {
+  grid-column: 3;
+  grid-row: 1;
+  border-left: 1px solid var(--line);
+}
+/* The console now owns a column rather than a strip, so it stacks: kit above,
+   commitment below, with room left for advancement. */
+.cockpit .console-layout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  min-height: 0;
+}
+.cockpit .engine-section {
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+.cockpit .action-section {
+  border-right: 0;
+}
+/* Perception belongs with the local view, not in a third console column. */
+.cockpit .private-section {
+  grid-column: 1;
+  grid-row: 3;
+  border-top: 1px solid var(--line);
+}
+.cockpit .map-surface {
+  /* Height must come from the column's width, not the other way round: the
+     base rule fixes a height, and an aspect ratio on top of that would size
+     the map from it and overflow the rail. */
+  height: auto;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+.cockpit > .world-layout > .world {
+  overflow: hidden;
+}
+.cockpit .world-topline,
+.cockpit .round-strip {
+  padding-inline: 18px;
+}
+@media (max-width: 1180px) {
+  .cockpit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cockpit > .world-layout > .world,
+  .cockpit > .player-area,
+  .cockpit > .world-layout > .team-sidebar,
+  .cockpit .private-section {
+    grid-column: 1;
+    grid-row: auto;
+    border-left: 0;
+    border-right: 0;
+  }
+  .cockpit .map-surface {
+    aspect-ratio: auto;
+  }
+}
+
+/* ---- Advancement ----
+   What this specialist has, and what is still ahead of them. Locked entries
+   are shown rather than hidden: knowing what is coming is most of the reason
+   to want it. */
+.advancement {
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+}
+.advance-track {
+  list-style: none;
+  margin: 9px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 9px;
+}
+.advance-track li {
+  border: 1px solid var(--line);
+  border-left: 3px solid #3c4a44;
+  border-radius: 7px;
+  padding: 9px 11px;
+  background: #16201e;
+}
+.advance-track li p {
+  margin: 5px 0 0;
+  font-size: 11px;
+  color: #9fb0a4;
+}
+.advance-when {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  color: #8fa398;
+}
+.advance-track li.held {
+  border-left-color: var(--seat-color);
+}
+.advance-track li.held .advance-when {
+  color: var(--seat-color);
+}
+.advance-track li.locked {
+  opacity: 0.62;
+  border-style: dashed;
+}
+.advance-track li.offered {
+  border-left-color: #e3d797;
+}
+.advance-track li.offered .advance-when {
+  color: #e3d797;
+}
+.advance-track li.spent {
+  opacity: 0.5;
+}
+
+/* ---- Platform allocation ----
+   Six systems and five dice, so the board's job is to show what the machine is
+   not doing this round as clearly as what it is. */
+.allocate-hint {
+  margin: 10px 0 8px;
+  font-size: 11px;
+  color: #8fa398;
+}
+.facet-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 9px;
+}
+.facet {
+  text-align: left;
+  border: 1px dashed #3a4842;
+  border-radius: 8px;
+  background: #16201e;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 92px;
+  color: inherit;
+}
+.facet:disabled {
+  cursor: default;
+}
+.facet:not(:disabled):hover {
+  border-color: var(--seat-color);
+}
+.facet-head {
+  display: flex;
+  flex-direction: column;
+}
+.facet-head strong {
+  font-size: 13px;
+}
+.facet-head small {
+  font-size: 10px;
+  color: #8fa398;
+}
+.facet-dice {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-height: 24px;
+}
+.facet-die {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  background: #e8e4d5;
+  color: #14211c;
+  font-style: normal;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 0 #6f7a63;
+}
+.facet-output {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #8fa398;
+}
+.facet.loaded {
+  border-style: solid;
+  border-color: var(--seat-color);
+}
+.facet.loaded .facet-output {
+  color: var(--seat-color);
+}
+.facet.inert {
+  border-color: #b1745e;
+}
+.facet.inert .facet-output {
+  color: #e4a680;
+}
+
+/* ---- Adjacency ---- */
+.beside-line {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #c3b98d;
+}
+
+/* ---- Board tooltip ----
+   A stopgap until the board has icons: says what is standing on a hex. It sits
+   above the canvas and must never intercept the click it is describing. */
+.board-canvas {
+  position: relative;
+}
+.board-tip {
+  position: absolute;
+  transform: translate(12px, -50%);
+  pointer-events: none;
+  z-index: 2;
+  max-width: 190px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid #3a4842;
+  background: #0f1614f2;
+  color: #e8e4d5;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-tip.flip {
+  transform: translate(calc(-100% - 12px), -50%);
+}
+
+/* ---- Routing and brownout ---- */
+/* Venting is the platform's cost, so it is drawn as loss of power rather than
+   as an error: the doomed dice dim and desaturate in place, and what has
+   already gone is kept on screen as a receipt rather than disappearing. */
+.die.doomed {
+  opacity: 0.38;
+  filter: grayscale(0.8);
+  border-color: #7c5a4a;
+}
+.vent-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: #b0836c;
+}
+.vent-strip i {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 4px;
+  border: 1px dashed #7c5a4a;
+  font-style: normal;
+  font-size: 10px;
+  color: #c9a08a;
+}
+.allocate-hint.costly {
+  color: #dbac85;
+}
+.facet-die.picked {
+  outline: 2px solid #e0cb84;
+  outline-offset: 2px;
+}
+
+/* ---- Calibration and hold ---- */
+.facet.tuned {
+  border-color: #e3d797;
+  box-shadow: inset 0 0 0 1px #e3d79733;
+}
+.facet.tuned .facet-output {
+  color: #e3d797;
+}
+.facet.keep {
+  border-style: dashed;
+  border-color: #6f8a7e;
+  background: #141d1c;
+}
+.facet.keep .facet-output {
+  color: #8fb0a0;
+}
+
+/* One vocabulary across the four consoles: gold reads "these pieces fit
+   together", dashed green reads "this survives the refill". The dice facets
+   set it above; cards, tokens and modules borrow the same two colours so a
+   player moving between seats does not have to relearn the signal. */
+.weave-read,
+.surge-note {
+  display: block;
+  font-size: 9px;
+  line-height: 1.5;
+  margin-top: 9px;
+  color: #99a2b1;
+}
+.weave-read.tuned,
+.surge-note.tuned {
+  color: #e3d797;
+}
+.surge-note.keep {
+  color: #8fb0a0;
+}
+.cards-engine {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cards-engine .card-hand {
+  min-width: 0;
+}
+.system-module {
+  position: relative;
+}
+.bag-token.held {
+  border-color: #d7e6d7;
+  border-style: dashed;
+  outline-color: #8fb0a0;
+}
+/* A held token keeps its kind visible, because composition is the read; the
+   pin is what says it survives the refill. */
+.bag-token.held::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid #dceadc;
+  background: #6f8a7e;
+}
+.bag-token {
+  position: relative;
+}
+.module-wire {
+  font-size: 7px;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  color: #e3d797;
+  min-height: 9px;
+}
+.system-module.held {
+  border-style: dashed;
+  border-color: #6f8a7e;
+}
+.system-module.held .module-wire {
+  color: #8fb0a0;
+}
+.system-module.occupied .module-wire {
+  color: #7f9c95;
+}
+.system-module.occupied:hover:not(:disabled) {
+  border-color: #8fb0a0;
+}
+
+/* ---- Master map -------------------------------------------------------- */
+/* A planning surface, not a second board. Ground is drawn as one silhouette
+   with no interior detail, so everything with contrast on this page is
+   something a person or the briefing put there. */
+.master-map {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+  padding: 14px 16px 18px;
+}
+.master-map-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.master-map-bar h2 {
+  margin: 0;
+  font-family: "Barlow Condensed", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.master-map-state {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.master-map-tools {
+  display: flex;
+  gap: 6px;
+}
+.master-map-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 3px;
+}
+.master-map-tools button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background-color: #c2d5a51f;
+}
+.master-map-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 14px;
+  min-height: 0;
+  flex: 1;
+}
+.master-map-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 340px;
+  max-height: 74vh;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0c1413;
+  touch-action: none;
+}
+.mm-ground {
+  fill: #16211e;
+  stroke: none;
+}
+.mm-outline line {
+  stroke: #4a5c52;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+/* A standing claim draws as the area it claims; checking it collapses the
+   area to a point, or strikes it through. */
+.mm-brief circle {
+  fill: #c2d5a50a;
+  stroke: #7d8f7d;
+  stroke-width: 0.8;
+  stroke-dasharray: 4 4;
+}
+.mm-brief-pin {
+  fill: #cfe0b4;
+}
+.mm-brief text {
+  fill: #cfe0b4;
+  font-size: 8px;
+  font-family: "Barlow Condensed", sans-serif;
+  letter-spacing: 0.03em;
+}
+.mm-brief-confirmed .mm-brief-pin {
+  fill: var(--accent);
+}
+.mm-brief-struck .mm-brief-pin {
+  fill: #7e6a6a;
+}
+.mm-brief-struck text {
+  fill: #8d7c7c;
+  text-decoration: line-through;
+}
+.mm-report rect {
+  fill: none;
+  stroke: #8fa8bb;
+  stroke-width: 1;
+}
+.mm-report text {
+  fill: #8fa8bb;
+  font-size: 7px;
+  font-family: "Barlow Condensed", sans-serif;
+}
+.mm-mark polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+.mm-mark circle {
+  fill: currentColor;
+}
+.mm-mark text {
+  fill: currentColor;
+  font-size: 8px;
+  font-family: "Barlow Condensed", sans-serif;
+}
+/* A plan that the world has broken says so, rather than looking confident. */
+.mm-mark-blocked polyline {
+  stroke: #d08a7a;
+  stroke-dasharray: 5 4;
+}
+.mm-mark-blocked text {
+  fill: #d08a7a;
+}
+.mm-draft polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  stroke-dasharray: 3 3;
+}
+.mm-draft circle {
+  fill: var(--accent);
+}
+.mm-ping {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rifts-ping var(--motion-ambient) var(--ease-exit) forwards;
+}
+@keyframes rifts-ping {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+.master-map-side {
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+.master-map-side h3 {
+  margin: 14px 0 6px;
+  font-family: "Barlow Condensed", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.master-map-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px;
+}
+.master-map-compose label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.master-map-compose input {
+  background: #0f1817;
+  border: 1px solid var(--line);
+  color: inherit;
+  border-radius: 3px;
+  padding: 6px 8px;
+}
+.master-map-compose-actions {
+  display: flex;
+  gap: 6px;
+}
+.master-map-compose-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  flex: 1;
+  justify-content: center;
+}
+.master-map-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.master-map-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mm-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 1px solid #ffffff10;
+  padding-bottom: 4px;
+  font-size: 0.85rem;
+}
+.mm-row strong {
+  flex: 1;
+  font-weight: 600;
+}
+.mm-row span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.mm-row button {
+  padding: 2px 6px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.mm-row-struck strong {
+  text-decoration: line-through;
+  color: #8d7c7c;
+}
+.mm-row-confirmed span {
+  color: var(--accent);
+}
+@media (max-width: 900px) {
+  .master-map-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .master-map-canvas {
+    max-height: 46vh;
+  }
+}
+
+/* A class with its own display would otherwise beat the UA rule for [hidden]. */
+.cockpit[hidden] {
+  display: none;
+}
+.table-layout[hidden] {
+  display: none;
+}
+
+/* The topbar is one unwrapped row, so narrow screens keep the icons and drop
+   the words. The title attribute still names each control. */
+@media (max-width: 760px) {
+  .control-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+.mm-leader {
+  stroke: #7d8f7d;
+  stroke-width: 0.6;
 }

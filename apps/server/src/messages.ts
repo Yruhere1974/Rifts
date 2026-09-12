@@ -11,6 +11,7 @@ export const joinOptionsSchema = z.object({
 });
 
 const target = z.string().min(1).max(128);
+const hexKey = z.string().regex(/^-?\d+,-?\d+$/);
 export const commandSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("act"),
@@ -28,13 +29,37 @@ export const commandSchema = z.discriminatedUnion("type", [
       .array(target)
       .max(32)
       .refine((pieces) => new Set(pieces).size === pieces.length),
+    // Systems only: which socket on the frame the placement builds into.
+    socket: z.number().int().min(0).max(31).optional(),
   }),
   z.strictObject({ type: z.literal("draw") }),
+  z.strictObject({ type: z.literal("keep"), piece: target }),
+  z.strictObject({
+    type: z.literal("allocate"),
+    die: target,
+    facet: z
+      .enum([
+        "mobility",
+        "bracing",
+        "targeting",
+        "boom",
+        "stabilizer",
+        "shield",
+        "locked",
+      ])
+      .nullable(),
+  }),
   z.strictObject({
     type: z.literal("share"),
     target: z.enum(["gate", "relay", "archive", "rift"]).optional(),
   }),
   z.strictObject({ type: z.literal("request"), target }),
+  z.strictObject({
+    type: z.literal("annotate"),
+    label: z.string().min(1).max(60),
+    hexes: z.array(hexKey).min(1).max(12),
+  }),
+  z.strictObject({ type: z.literal("erase"), mark: target }),
   z.strictObject({ type: z.literal("hold") }),
   z.strictObject({ type: z.literal("ready") }),
   z.strictObject({ type: z.literal("upgrade") }),
@@ -47,3 +72,8 @@ export const commandMessageSchema = z.strictObject({
   command: commandSchema,
 });
 export const seatMessageSchema = z.strictObject({ token, seat: seatSchema });
+/**
+ * Pointing is not a rules command. A ping leaves nothing to reconcile, so the
+ * room relays it and the mission never hears about it.
+ */
+export const pingMessageSchema = z.strictObject({ token, hex: hexKey });

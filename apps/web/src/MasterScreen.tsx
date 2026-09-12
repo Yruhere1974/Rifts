@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { ExternalLink, Radio } from "lucide-react";
+import { useState, type CSSProperties } from "react";
+import { ExternalLink, Hexagon, Radio } from "lucide-react";
+import { playableMission } from "@rifts/content";
 import { missionSeats, type Seat } from "@rifts/rules";
 import { MasterMap } from "./MasterMap.js";
 import { identities } from "./EngineConsole.js";
@@ -93,14 +94,21 @@ export function MasterScreen({ roomId }: { roomId: string | null }) {
   );
 
   return (
-    <div className="app master-screen">
-      <header className="app-header">
-        <div className="brand">
-          <span className="brand-mark" />
+    <div
+      className="game-shell master-screen"
+      style={{ "--seat-color": identities[planning].color } as CSSProperties}
+    >
+      <header className="topbar">
+        <div className="wordmark">
+          <Hexagon size={27} strokeWidth={1.4} />
           <h1>RIFTS</h1>
-          <span className="brand-sub">Field operations</span>
+          <span className="edition">FIELD OPERATIONS</span>
         </div>
-        <div className="header-controls">
+        <div className="mission-heading">
+          <span>OPERATION 01</span>
+          <strong>{playableMission.name}</strong>
+        </div>
+        <div className="header-tools">
           <span className="connection-indicator">{table.status}</span>
         </div>
       </header>
@@ -123,6 +131,7 @@ export function MasterScreen({ roomId }: { roomId: string | null }) {
           onErase={(mark) => table.send({ type: "erase", mark })}
           onPing={table.ping}
           roster={roster}
+          kind="master"
         />
       ) : (
         <p className="master-map-hint" role="status">

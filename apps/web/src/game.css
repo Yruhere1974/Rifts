@@ -3351,6 +3351,21 @@ select {
     max-height: 46vh;
   }
 }
+/* Below this the drawing is too small to letter. It keeps its shape, its
+   spreads and its pins, and the briefing list beside it names every mark
+   anyway, so the text is dropped rather than rendered at two pixels. */
+@media (max-width: 620px) {
+  .master-map-canvas {
+    max-height: none;
+    min-height: 52vh;
+  }
+  .master-map-canvas text {
+    display: none;
+  }
+  .master-map-canvas .mm-leader {
+    display: none;
+  }
+}
 
 /* A class with its own display would otherwise beat the UA rule for [hidden]. */
 .cockpit[hidden] {

@@ -87,6 +87,7 @@ export function MasterMap({
   onPing,
   onTakeSeat,
   roster,
+  kind = "screen",
 }: {
   surface: MasterMapSurface;
   seat: Seat | null;
@@ -99,6 +100,12 @@ export function MasterMap({
   onTakeSeat?: (() => void) | undefined;
   /** The master tab's crew roster, which spawns a console per claimed seat. */
   roster?: ReactNode;
+  /**
+   * Why this surface cannot be drawn on. A shared screen never can; a master
+   * tab cannot until this browser claims a specialist, and saying "shared
+   * screen" there would be wrong about whose tab it is.
+   */
+  kind?: "screen" | "master";
 }) {
   const [mode, setMode] = useState<Mode>("point");
   const [draft, setDraft] = useState<string[]>([]);
@@ -134,24 +141,42 @@ export function MasterMap({
    * a label pushed off its pin keeps a leader line back to it.
    */
   const labels = useMemo(() => {
-    const placed: { x1: number; x2: number; y: number }[] = [];
-    const LINE = 9.5;
+    // Real boxes rather than baselines: an 8px label occupies about ten units
+    // of height, and a pin fourteen, so comparing baselines alone let text
+    // settle one line down and still sit across a neighbour's diamond.
+    type Box = { x1: number; x2: number; top: number; bottom: number };
+    const placed: Box[] = [];
+    const STEP = 11;
+    const hits = (a: Box, b: Box) =>
+      a.x1 < b.x2 && b.x1 < a.x2 && a.top < b.bottom && b.top < a.bottom;
     const settle = (x: number, y: number, text: string) => {
       const width = text.length * 3.7;
       let at = y;
       let guard = 0;
-      while (
-        guard++ < 40 &&
-        placed.some(
-          (box) =>
-            Math.abs(box.y - at) < LINE && box.x1 < x + width && x < box.x2,
-        )
-      )
-        at += LINE;
-      placed.push({ x1: x, x2: x + width, y: at });
+      const boxAt = (baseline: number): Box => ({
+        x1: x,
+        x2: x + width,
+        top: baseline - 8,
+        bottom: baseline + 3,
+      });
+      while (guard++ < 40 && placed.some((box) => hits(boxAt(at), box)))
+        at += STEP;
+      placed.push(boxAt(at));
       return at;
     };
     const out = new Map<string, number>();
+    // Pins are placed first and treated as occupied, because a label is
+    // struck through just as badly by a neighbour's diamond as by its text.
+    for (const marker of surface.briefing) {
+      const centre = centreOf(marker.hex);
+      if (centre)
+        placed.push({
+          x1: centre.x - 5,
+          x2: centre.x + 7,
+          top: centre.y - 8,
+          bottom: centre.y + 8,
+        });
+    }
     for (const marker of surface.briefing) {
       const centre = centreOf(marker.hex);
       if (centre)
@@ -239,7 +264,9 @@ export function MasterMap({
           <h2>Master map</h2>
           <p className="master-map-state">
             {seat === null
-              ? "Shared screen. The map is read-only here."
+              ? kind === "master"
+                ? "No specialist claimed yet. Claim one to draw on the map."
+                : "Shared screen. The map is read-only here."
               : surface.planning
                 ? "Planning window open. Draw, erase and point."
                 : "The round is being spent. You can still point."}

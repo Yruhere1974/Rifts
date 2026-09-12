@@ -472,6 +472,9 @@ test("the master tab spawns a console, keeps its own tab, and plans beside it", 
     // read the surface but not draw on it.
     await expect(map.locator(".master-map-tools")).toHaveCount(0);
     await expect(master.getByText(/Claim a specialist/)).toBeVisible();
+    // It says why it cannot draw, and does not call itself a shared screen.
+    await expect(map.getByText(/No specialist claimed yet/)).toBeVisible();
+    await expect(map.getByText(/Shared screen/)).toHaveCount(0);
 
     // Claiming opens that specialist's console in its own browser tab.
     const [spawned] = await Promise.all([

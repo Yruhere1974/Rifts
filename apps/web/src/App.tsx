@@ -713,7 +713,7 @@ export function App() {
               {/* One flash, never a loop: a permanent alarm would stop reading
                 as news long before instability actually reaches 12. */}
               <div
-                key={instabilityPulse}
+                key={`instability-${instabilityPulse}`}
                 className={`segmented-track danger${escalating ? " motion-flash" : ""}`}
               >
                 {Array.from({ length: 12 }, (_, i) => (
@@ -724,7 +724,7 @@ export function App() {
               {/* The world answered and re-issued its forecast; the block settles
                 back in so the escalation lands somewhere other than the log. */}
               <div
-                key={roundPulse}
+                key={`round-${roundPulse}`}
                 className={`world-response${roundTurned ? " motion-settle" : ""}`}
               >
                 <span>NEXT WORLD RESPONSE</span>

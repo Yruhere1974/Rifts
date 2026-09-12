@@ -195,10 +195,32 @@ type EngineProps = {
 /** How long the reveal rests on each face before moving to the next. */
 const TUMBLE = Math.round(MOTION.instant / 2);
 
+type Throw = { x: number; y: number; rot: number };
+
+/**
+ * Where a die is thrown from. Derived from its id rather than random, so a
+ * re-render never re-throws a die that is already lying still, and different
+ * every round, because a die id carries its round. Every die comes in from
+ * the same side: the tray is a table somebody rolled across, not a scatter
+ * of independent arrivals.
+ */
+function throwFrom(id: string): Throw {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  const at = (shift: number, span: number) => Math.abs(hash >> shift) % span;
+  return {
+    x: -(90 + at(0, 80)),
+    y: -(8 + at(5, 30)),
+    // A big angle that resolves to zero, which is the die squaring up.
+    rot: (at(11, 2) ? 1 : -1) * (150 + at(13, 210)),
+  };
+}
+
 function Die({
   value,
   index,
   arriving,
+  throwFrom: thrown,
   reduced,
   selected,
   doomed,
@@ -207,6 +229,7 @@ function Die({
   value: number;
   index: number;
   arriving: boolean;
+  throwFrom: Throw;
   reduced: boolean;
   selected: boolean;
   /** Would vent if the die currently held were routed. */
@@ -229,7 +252,7 @@ function Die({
         clearInterval(spin);
         setTumbling(false);
       },
-      start + MOTION.settle - MOTION.instant,
+      start + MOTION.travel - MOTION.instant,
     );
     return () => {
       clearTimeout(begin);
@@ -250,7 +273,14 @@ function Die({
         shown >= 4 && "can-engage",
         arriving && "motion-arrive",
       )}
-      style={delayStyle(staggerDelay(index))}
+      style={
+        {
+          ...delayStyle(staggerDelay(index)),
+          "--throw-x": `${thrown.x}px`,
+          "--throw-y": `${thrown.y}px`,
+          "--throw-rot": `${thrown.rot}deg`,
+        } as CSSProperties
+      }
     >
       <span className="die-face">
         {Array.from({ length: 9 }, (_, i) => (
@@ -294,11 +324,17 @@ function DiceEngine({
 }: EngineProps & { onAllocate: (die: string, facet: DieSlot) => void }) {
   const dice = view.engine.dice;
   const reduced = useReducedMotion();
-  const ids = dice.map((die) => die.id);
-  const arrivals = useArrivals(ids);
+  // The tray reads low to high, because routing order is the whole decision:
+  // sending surge to a system browns out every loose die showing lower, so an
+  // unsorted tray hides the cost of taking the top die first.
+  const loose = dice
+    .filter((die) => die.facet === null)
+    .sort((a, b) => a.value - b.value || a.id.localeCompare(b.id));
+  const ids = loose.map((die) => die.id);
+  // The opening tray is a real roll, so it arrives like every later one.
+  const arrivals = useArrivals(ids, true);
   const order = arrivalOrder(ids, arrivals);
   const spend = useDeparture(dice.length);
-  const loose = dice.filter((die) => die.facet === null);
   const engine = view.engine;
   const spare = engine.capacity - engine.routings;
   // The selected die, whether it is still loose or already past the manifold:
@@ -322,6 +358,7 @@ function DiceEngine({
             value={die.value}
             index={order.get(die.id) ?? 0}
             arriving={arrivals.has(die.id)}
+            throwFrom={throwFrom(die.id)}
             reduced={reduced}
             selected={selected.includes(die.id)}
             doomed={doomed.has(die.id)}

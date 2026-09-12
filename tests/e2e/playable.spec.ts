@@ -538,3 +538,70 @@ test("deployment opens on the brief, which lays out the objectives", async ({
     page.getByRole("button", { name: "Take your seat" }),
   ).toHaveCount(0);
 });
+
+test("the opening tray is rolled, and settles into routing order", async ({
+  page,
+  browser,
+}) => {
+  // The suite runs reduced by default, which is the degraded path: the dice
+  // must still be laid out, sorted and truthful with no animation at all.
+  await deploy(page);
+  const still = await page.evaluate(() => {
+    const dice = [...document.querySelectorAll(".dice-tray .die")];
+    return {
+      running: dice.flatMap((die) => die.getAnimations()).length,
+      values: dice.map((die) =>
+        Number(die.querySelector(".die-value")!.textContent),
+      ),
+      labels: dice.map((die) => die.getAttribute("aria-label")),
+    };
+  });
+  expect(still.running).toBe(0);
+  expect(still.values).toEqual([...still.values].sort((a, b) => a - b));
+  // Routing browns out every loose die showing lower, so the order is the
+  // decision surface rather than decoration.
+  expect(still.labels).toEqual(still.values.map((value) => `Die ${value}`));
+
+  const context = await browser.newContext({ reducedMotion: "no-preference" });
+  try {
+    const rolling = await context.newPage();
+    await rolling.goto("/");
+    await rolling.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await rolling.getByRole("button", { name: "Take your seat" }).click();
+    await rolling.locator(".die").first().waitFor();
+
+    const roll = await rolling.evaluate(() => {
+      const dice = [...document.querySelectorAll(".dice-tray .die")];
+      const anims = dice.flatMap((die) => die.getAnimations());
+      return {
+        names: [
+          ...new Set(anims.map((a) => (a as CSSAnimation).animationName)),
+        ],
+        delays: anims.map((a) => a.effect!.getTiming().delay ?? 0),
+      };
+    });
+    expect(roll.names).toEqual(["rifts-die-roll"]);
+    // Thrown in sequence rather than all at once, left to right.
+    const ordered = roll.delays.every(
+      (delay, i) => i === 0 || (roll.delays[i - 1] ?? 0) <= delay,
+    );
+    expect(ordered).toBe(true);
+    expect(new Set(roll.delays).size).toBeGreaterThan(1);
+
+    // Rounds are simultaneous, so motion must never gate input: a die is
+    // selectable while the tray is still arriving.
+    await rolling.locator(".die").first().click();
+    await expect(rolling.locator(".die.selected")).toHaveCount(1);
+
+    // The roll reveals what the server already decided; it never chooses.
+    const landed = await rolling.evaluate(() =>
+      [...document.querySelectorAll(".dice-tray .die")].map((die) => ({
+        shown: die.querySelector(".die-value")!.textContent,
+        label: die.getAttribute("aria-label"),
+      })),
+    );
+    for (const die of landed) expect(die.label).toContain(`Die ${die.shown}`);
+  } finally {
+    await context.close();
+  }
+});

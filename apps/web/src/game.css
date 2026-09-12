@@ -571,8 +571,23 @@ h3 {
   align-items: center;
   justify-content: flex-start;
   gap: 12px;
-  padding: 21px 0;
+  padding: 21px 16px 27px;
   flex-wrap: wrap;
+  /* A surface for the dice to land on, recessed so they sit in it rather than
+     float over the panel. Dice are thrown in from the left, so the throw is
+     clipped at the edge and they appear to arrive from off the table. */
+  background: radial-gradient(
+    120% 90% at 20% 0%,
+    #1b2a22 0%,
+    #141f1a 60%,
+    #111a16 100%
+  );
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 2px 10px #060b0899,
+    inset 0 -1px 0 #ffffff08;
+  overflow: hidden;
 }
 .die {
   position: relative;
@@ -2343,6 +2358,34 @@ select {
 }
 .motion-arrive {
   animation: rifts-arrive var(--motion-settle) var(--ease-enter) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+/* Dice arrive by being rolled rather than by fading in. Expressed through the
+   independent translate/rotate/scale properties so it composes with the
+   `transform` that .die:hover and .die.selected set, and with `backwards` fill
+   so the stagger delay holds the die off the table until its turn. The angle
+   resolving to zero is the die squaring up; the tray is sorted, so the row it
+   settles into is already in routing order. */
+@keyframes rifts-die-roll {
+  from {
+    opacity: 0;
+    translate: var(--throw-x, -110px) var(--throw-y, -18px);
+    rotate: var(--throw-rot, -220deg);
+    scale: 0.88;
+  }
+  35% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+  }
+}
+.die.motion-arrive {
+  animation: rifts-die-roll var(--motion-travel) var(--ease-enter) backwards;
   animation-delay: var(--motion-delay, 0ms);
 }
 

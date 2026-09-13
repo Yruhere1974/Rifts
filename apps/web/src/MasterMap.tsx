@@ -1,12 +1,6 @@
 import { useMemo, useState, type PointerEvent, type ReactNode } from "react";
 import { Crosshair, Eraser, MapPin, Route, Spline } from "lucide-react";
-import {
-  briefingRadius,
-  mapBounds,
-  missionMap,
-  missionObjectives,
-  playableMission,
-} from "@rifts/content";
+import { briefingRadius, mapBounds, missionMap } from "@rifts/content";
 import {
   hexCorners,
   hexKey,
@@ -18,9 +12,7 @@ import {
   type Hex,
 } from "@rifts/shared";
 import {
-  objectiveState,
   routeCost,
-  missionRoundLimit,
   type MapMark,
   type MissionBriefing,
   type MissionEnemy,
@@ -28,6 +20,7 @@ import {
   type Seat,
 } from "@rifts/rules";
 import { identities } from "./EngineConsole.js";
+import { MissionBrief } from "./MissionBrief.js";
 import type { MissionPing } from "./useMission.js";
 
 /**
@@ -202,9 +195,6 @@ export function MasterMap({
     }
     return out;
   }, [surface.marks, surface.enemies, size]);
-
-  /** The authored objectives, each answered from public state. */
-  const objectives = useMemo(() => objectiveState(surface), [surface]);
 
   const editable = seat !== null && surface.planning;
 
@@ -464,64 +454,11 @@ export function MasterMap({
 
         <aside className="master-map-side">
           {roster}
-          <section className="master-map-brief" aria-label="Mission brief">
-            <h3>{playableMission.name}</h3>
-            <p className="master-map-objective">{playableMission.objective}</p>
-            <p className="master-map-stake">{playableMission.stake}</p>
-            <ul className="master-map-objectives">
-              {missionObjectives.map((objective) => {
-                const live = objectives.find(
-                  (entry) => entry.id === objective.id,
-                );
-                const mark = surface.briefing.find(
-                  (entry) => entry.id === objective.marker,
-                );
-                return (
-                  <li
-                    key={objective.id}
-                    className={`mm-objective${objective.scored ? " mm-objective-scored" : ""}${
-                      live?.done ? " mm-objective-done" : ""
-                    }`}
-                    // Pointing at an objective lights the mark that claims to
-                    // locate it, which is the whole tie between brief and map.
-                    onPointerEnter={() => setLit(objective.marker)}
-                    onPointerLeave={() => setLit(null)}
-                    onFocus={() => setLit(objective.marker)}
-                    onBlur={() => setLit(null)}
-                    tabIndex={0}
-                  >
-                    <div className="mm-objective-head">
-                      <strong>{objective.title}</strong>
-                      <span>{live?.readout}</span>
-                    </div>
-                    <p>{objective.detail}</p>
-                    {mark && (
-                      <p className="mm-objective-mark">
-                        {mark.state === "struck"
-                          ? `The briefing was wrong about ${mark.label.toLowerCase()}.`
-                          : mark.state === "confirmed"
-                            ? `Confirmed on the map: ${mark.label.toLowerCase()}.`
-                            : `Briefing places this ${mark.precision === "known" ? "exactly" : mark.precision === "inferred" ? "roughly" : "somewhere"}: ${mark.label.toLowerCase()}.`}
-                      </p>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-            <p className="master-map-clock">
-              Round {surface.round} of {missionRoundLimit} · instability{" "}
-              {surface.instability} of {playableMission.instabilityLimit}
-            </p>
-            {onTakeSeat && (
-              <button
-                type="button"
-                className="master-map-deploy"
-                onClick={onTakeSeat}
-              >
-                Take your seat
-              </button>
-            )}
-          </section>
+          <MissionBrief
+            surface={surface}
+            onLight={setLit}
+            onTakeSeat={onTakeSeat}
+          />
 
           {seat !== null && surface.planning && (
             <form

@@ -4,6 +4,7 @@ import { playableMission } from "@rifts/content";
 import { missionSeats, type Seat } from "@rifts/rules";
 import { MasterMap } from "./MasterMap.js";
 import { identities } from "./EngineConsole.js";
+import { MissionBrief } from "./MissionBrief.js";
 import { useTableView } from "./useTableView.js";
 
 /**
@@ -160,6 +161,11 @@ export function MasterScreen({
               ? "Four players, one specialist each."
               : `${4 / table.seatsPerPlayer} players, ${table.seatsPerPlayer} specialists each. The mission is always four specialists, however many people are running them.`}
           </p>
+          {/* The mission you are choosing a specialist for. Nothing here is
+              private, and without it the roster asks you to pick a class with
+              no idea what the team is walking into. The clock is left off:
+              round and instability mean nothing before the mission runs. */}
+          <MissionBrief surface={view} clock={false} />
           {crew}
           <p className="master-map-hint" role="status">
             {table.claimedSeats.length} of 4 specialists claimed.

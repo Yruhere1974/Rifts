@@ -513,6 +513,15 @@ test("two players run two specialists each, joined by a four-digit code", async 
     const code = (await host.locator(".lobby-code").innerText()).trim();
     expect(code).toMatch(/^\d{4}$/);
 
+    // The lobby says what the mission is, because otherwise the roster asks
+    // you to pick a specialist with no idea what the team is walking into.
+    const brief = host.getByRole("region", { name: "Mission brief" });
+    await expect(brief).toBeVisible();
+    await expect(brief.locator(".mm-objective")).toHaveCount(4);
+    await expect(brief.locator(".mm-objective-scored")).toHaveCount(1);
+    // No round or instability yet: there is no mission running to count.
+    await expect(host.locator(".table-lobby .master-map-clock")).toHaveCount(0);
+
     const claim = async (page: Page) => {
       const open = page.getByRole("button", { name: "Run this specialist" });
       const before = await open.count();

@@ -6,6 +6,8 @@ async function deploy(page: Page, tutorial = false) {
   if (tutorial)
     await page.getByRole("checkbox", { name: "Guided tutorial" }).check();
   await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+  // Deployment lands on the mission brief, not in the cockpit.
+  await page.getByRole("button", { name: "Take your seat" }).click();
   await expect(page.locator(".die")).toHaveCount(5);
 }
 async function seat(page: Page, name: string) {
@@ -137,6 +139,7 @@ test("tutorial can pause, resume, skip and restart on a new mobile table", async
   await page.getByRole("button", { name: "Skip lesson" }).click();
   await page.getByRole("button", { name: "Leave table" }).click();
   await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+  await page.getByRole("button", { name: "Take your seat" }).click();
   await expect(page.locator(".tutorial-copy h2")).toHaveText(
     "One crisis, four perspectives",
   );
@@ -304,10 +307,9 @@ test("private location perspectives combine into a paid team discovery", async (
   await seat(page, "Ley Line Walker");
   // The archive is across the map now, so getting there is a journey.
   expect(await drive.headFor(page, "Silent archive")).toBe(true);
-  await page
-    .getByRole("button", { name: "Channel card", exact: true })
-    .first()
-    .click();
+  // The hand is dealt from the ley network now, so which links it holds is
+  // not fixed; investigating takes a link rather than a Channel specifically.
+  expect(await drive.selectAnyPiece(page)).toBe(true);
   await page.getByRole("button", { name: "Investigate", exact: true }).click();
   await expect(page.locator(".action-preview")).toContainText(
     "+2 shared Power",
@@ -440,8 +442,14 @@ test("the master map carries the briefing and the team's own marks", async ({
   expect(page.url()).toContain("map=1");
 
   // The mission's own marks are there before anyone has drawn anything, on
-  // the drawing and in the list beside it.
-  await expect(map.getByText("Relay conduits")).toHaveCount(2);
+  // the drawing and in the briefing-marks list beside it. Scoped to each,
+  // because the brief above them names its marks a third time.
+  await expect(
+    map.locator(".master-map-canvas").getByText("Relay conduits"),
+  ).toHaveCount(1);
+  await expect(
+    map.locator(".master-map-list").getByText("Relay conduits"),
+  ).toHaveCount(1);
   await expect(map.getByText("Nothing drawn yet.")).toBeVisible();
 
   // Ground is one silhouette: no apparatus, no patrols, no units.
@@ -485,4 +493,283 @@ test("ink belongs to the planning window, and pointing does not", async ({
   ).toBeDisabled();
   // Pointing is never a commitment, so it stays available all round.
   await expect(map.getByRole("button", { name: "Point" })).toBeEnabled();
+});
+
+test("deployment opens on the brief, which lays out the objectives", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+
+  // The map is the screen you land on: the brief is read before anything is
+  // spent, and the console is not on the page yet.
+  const map = page.getByRole("region", { name: "Master map" });
+  await expect(map).toBeVisible();
+  await expect(page.locator(".cockpit")).toBeHidden();
+
+  const brief = page.getByRole("region", { name: "Mission brief" });
+  await expect(brief.locator(".master-map-objective")).toHaveText(
+    "Close the breach.",
+  );
+  // Four objectives, exactly one of which the mission is scored on.
+  await expect(brief.locator(".mm-objective")).toHaveCount(4);
+  await expect(brief.locator(".mm-objective-scored")).toHaveCount(1);
+  await expect(brief.getByText("0 / 24 stabilization")).toBeVisible();
+  await expect(brief.getByText(/Round 1 of 6/)).toBeVisible();
+
+  // The brief is a live checklist, not a document: it reads the same public
+  // state the cockpit does, so nothing here is met at deployment.
+  await expect(brief.locator(".mm-objective-done")).toHaveCount(0);
+  await expect(brief.getByText("Shield holding")).toBeVisible();
+
+  // Each objective names the mark that claims to locate it.
+  await expect(
+    brief.getByText(/Briefing places this roughly: breach, east chamber/i),
+  ).toBeVisible();
+
+  // Taking the seat leaves the brief behind for the rest of the mission.
+  await page.getByRole("button", { name: "Take your seat" }).click();
+  await expect(page.locator(".die")).toHaveCount(5);
+  await expect(map).toBeHidden();
+  await page.getByRole("button", { name: "Master map" }).click();
+  await expect(map).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Take your seat" }),
+  ).toHaveCount(0);
+});
+
+test("the opening tray is rolled, and settles into routing order", async ({
+  page,
+  browser,
+}) => {
+  // The suite runs reduced by default, which is the degraded path: the dice
+  // must still be laid out, sorted and truthful with no animation at all.
+  await deploy(page);
+  const still = await page.evaluate(() => {
+    const dice = [...document.querySelectorAll(".dice-tray .die")];
+    return {
+      running: dice.flatMap((die) => die.getAnimations()).length,
+      values: dice.map((die) =>
+        Number(die.querySelector(".die-value")!.textContent),
+      ),
+      labels: dice.map((die) => die.getAttribute("aria-label")),
+    };
+  });
+  expect(still.running).toBe(0);
+  expect(still.values).toEqual([...still.values].sort((a, b) => a - b));
+  // Routing browns out every loose die showing lower, so the order is the
+  // decision surface rather than decoration.
+  expect(still.labels).toEqual(still.values.map((value) => `Die ${value}`));
+
+  const context = await browser.newContext({ reducedMotion: "no-preference" });
+  try {
+    const rolling = await context.newPage();
+    await rolling.goto("/");
+    await rolling.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await rolling.getByRole("button", { name: "Take your seat" }).click();
+    await rolling.locator(".die").first().waitFor();
+
+    const roll = await rolling.evaluate(() => {
+      const dice = [...document.querySelectorAll(".dice-tray .die")];
+      const anims = dice.flatMap((die) => die.getAnimations());
+      return {
+        names: [
+          ...new Set(anims.map((a) => (a as CSSAnimation).animationName)),
+        ],
+        delays: anims.map((a) => a.effect!.getTiming().delay ?? 0),
+      };
+    });
+    expect(roll.names).toEqual(["rifts-die-roll"]);
+    // Thrown in sequence rather than all at once, left to right.
+    const ordered = roll.delays.every(
+      (delay, i) => i === 0 || (roll.delays[i - 1] ?? 0) <= delay,
+    );
+    expect(ordered).toBe(true);
+    expect(new Set(roll.delays).size).toBeGreaterThan(1);
+
+    // Rounds are simultaneous, so motion must never gate input: a die is
+    // selectable while the tray is still arriving.
+    await rolling.locator(".die").first().click();
+    await expect(rolling.locator(".die.selected")).toHaveCount(1);
+
+    // The roll reveals what the server already decided; it never chooses.
+    const landed = await rolling.evaluate(() =>
+      [...document.querySelectorAll(".dice-tray .die")].map((die) => ({
+        shown: die.querySelector(".die-value")!.textContent,
+        label: die.getAttribute("aria-label"),
+      })),
+    );
+    for (const die of landed) expect(die.label).toContain(`Die ${die.shown}`);
+  } finally {
+    await context.close();
+  }
+});
+
+test("the Walker's hand is dealt off a ley network with a visible count", async ({
+  page,
+  browser,
+}) => {
+  await deploy(page);
+  await seat(page, "Ley Line Walker");
+  const hand = page.locator(".playing-card");
+  await expect(hand).toHaveCount(5);
+  // The network is a deck, so what it has left is the Walker's information.
+  await expect(page.locator(".ley-deck-count")).toHaveText("16");
+
+  const context = await browser.newContext({ reducedMotion: "no-preference" });
+  try {
+    const dealing = await context.newPage();
+    await dealing.goto("/");
+    await dealing.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await dealing.getByRole("button", { name: "Take your seat" }).click();
+    await dealing.locator(".die").first().waitFor();
+    await dealing
+      .locator(".crew-seat")
+      .filter({ hasText: "Ley Line Walker" })
+      .click();
+    await dealing.locator(".playing-card").first().waitFor();
+    const deal = await dealing.evaluate(() => {
+      const cards = [...document.querySelectorAll(".playing-card")];
+      const anims = cards.flatMap((card) => card.getAnimations());
+      return {
+        names: [
+          ...new Set(anims.map((a) => (a as CSSAnimation).animationName)),
+        ],
+        delays: anims.map((a) => a.effect!.getTiming().delay ?? 0),
+      };
+    });
+    // Dealt off the deck in sequence, in the cards' own dialect rather than
+    // the dice's: each card slides from the network and straightens.
+    expect(deal.names).toEqual(["rifts-card-deal"]);
+    expect(new Set(deal.delays).size).toBeGreaterThan(1);
+
+    // Motion never gates input, because rounds are simultaneous.
+    await dealing.locator(".playing-card").first().click();
+    await expect(dealing.locator(".playing-card.selected")).toHaveCount(1);
+  } finally {
+    await context.close();
+  }
+});
+
+test("a push pulls the token out of the bag and turns it over", async ({
+  page,
+  browser,
+}) => {
+  // Reduced is the degraded path: the token is simply there, and readable.
+  await deploy(page);
+  await seat(page, "Juicer");
+  const push = page.getByRole("button", {
+    name: "Push for another surge token",
+  });
+  await push.click();
+  await expect(page.locator(".bag-token")).toHaveCount(1);
+  const still = await page.evaluate(() => {
+    const token = document.querySelector(".bag-token")!;
+    return {
+      running: [
+        ...token.getAnimations(),
+        ...[...token.children].flatMap((c) => c.getAnimations()),
+      ].length,
+      face: getComputedStyle(token.children[1]!).opacity,
+    };
+  });
+  expect(still.running).toBe(0);
+  expect(still.face).toBe("1");
+
+  const context = await browser.newContext({ reducedMotion: "no-preference" });
+  try {
+    const pulling = await context.newPage();
+    await pulling.goto("/");
+    await pulling.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await pulling.getByRole("button", { name: "Take your seat" }).click();
+    await pulling.locator(".die").first().waitFor();
+    await pulling.locator(".crew-seat").filter({ hasText: "Juicer" }).click();
+    await pulling
+      .getByRole("button", { name: "Push for another surge token" })
+      .click();
+    await pulling.locator(".bag-token").first().waitFor();
+
+    const pull = await pulling.evaluate(() => {
+      const token = document.querySelector(".bag-token")!;
+      return {
+        token: token
+          .getAnimations()
+          .map((a) => (a as CSSAnimation).animationName),
+        face: [...token.children]
+          .flatMap((c) => c.getAnimations())
+          .map((a) => (a as CSSAnimation).animationName),
+        bag: document.querySelector(".draw-bag")!.getAnimations().length,
+      };
+    });
+    // The token is pulled from the bag, and its kind is what the flip reveals,
+    // so the reveal lands last on the token the server already drew.
+    expect(pull.token).toEqual(["rifts-bag-pull"]);
+    expect(new Set(pull.face)).toEqual(new Set(["rifts-bag-face"]));
+    // The bag gives as the hand goes in rather than only the button clicking.
+    expect(pull.bag).toBeGreaterThan(0);
+
+    // Rounds are simultaneous, so a token is holdable while still arriving.
+    await pulling.locator(".bag-token").first().click();
+    await expect(pulling.locator(".bag-token.held")).toHaveCount(1);
+  } finally {
+    await context.close();
+  }
+});
+
+test("the Wizard's components drop into the rail", async ({
+  page,
+  browser,
+}) => {
+  await deploy(page);
+  await seat(page, "Techno-Wizard");
+  await expect(page.locator(".placement-marker")).toHaveCount(4);
+  // Reduced is the degraded path: the components are simply in the rail.
+  expect(
+    await page.evaluate(
+      () =>
+        [...document.querySelectorAll(".placement-marker")].flatMap((m) =>
+          m.getAnimations(),
+        ).length,
+    ),
+  ).toBe(0);
+
+  const context = await browser.newContext({ reducedMotion: "no-preference" });
+  try {
+    const dropping = await context.newPage();
+    await dropping.goto("/");
+    await dropping.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await dropping.getByRole("button", { name: "Take your seat" }).click();
+    await dropping.locator(".die").first().waitFor();
+    await dropping
+      .locator(".crew-seat")
+      .filter({ hasText: "Techno-Wizard" })
+      .click();
+    await dropping.locator(".placement-marker").first().waitFor();
+
+    const drop = await dropping.evaluate(() => {
+      const anims = [...document.querySelectorAll(".placement-marker")].flatMap(
+        (m) => m.getAnimations(),
+      );
+      return {
+        names: [
+          ...new Set(anims.map((a) => (a as CSSAnimation).animationName)),
+        ],
+        durations: [
+          ...new Set(anims.map((a) => a.effect!.getTiming().duration)),
+        ],
+        delays: anims.map((a) => a.effect!.getTiming().delay ?? 0),
+      };
+    });
+    // Its own dialect: a short fall, not the dice's throw or the cards' slide.
+    expect(drop.names).toEqual(["rifts-marker-drop"]);
+    // Short on purpose, because four land in sequence before a round starts.
+    expect(drop.durations).toEqual([320]);
+    expect(new Set(drop.delays).size).toBeGreaterThan(1);
+
+    // Rounds are simultaneous, so a component is selectable as it lands.
+    await dropping.locator(".placement-marker").first().click();
+    await expect(dropping.locator(".placement-marker.selected")).toHaveCount(1);
+  } finally {
+    await context.close();
+  }
 });

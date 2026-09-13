@@ -7,6 +7,10 @@ import {
   specialistsSchema,
   briefingMarkers,
   briefingMarkersSchema,
+  missionObjectives,
+  missionObjectivesSchema,
+  leyDeck,
+  leyDeckSchema,
 } from "./index.js";
 
 const result = scenarioSchema.safeParse(prototypeScenario);
@@ -22,6 +26,20 @@ console.log(`Validated playable mission: ${playableMission.id}`);
 specialistsSchema.parse(specialists);
 console.log(
   `Validated specialists: ${specialists.map((s) => `${s.className} (${s.family})`).join(", ")}`,
+);
+leyDeckSchema.parse(leyDeck);
+console.log(
+  `Validated ley deck: ${leyDeck.length} cards (${[
+    "channel",
+    "spell",
+    "reaction",
+  ]
+    .map((kind) => `${leyDeck.filter((c) => c === kind).length} ${kind}`)
+    .join(", ")})`,
+);
+missionObjectivesSchema.parse(missionObjectives);
+console.log(
+  `Validated objectives: ${missionObjectives.map((o) => o.title).join(", ")}`,
 );
 briefingMarkersSchema.parse(briefingMarkers);
 console.log(

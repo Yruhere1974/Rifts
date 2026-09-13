@@ -31,7 +31,7 @@ function closeRoom(room: Room | null): void {
  * each tab, so four tabs on one machine can hold four different seats. A
  * browser-wide key would make the server refuse the second tab's seat claim.
  */
-function persistentClientKey(): string {
+export function persistentClientKey(): string {
   const existing = sessionStorage.getItem("rifts-client-key");
   if (existing) return existing;
   const key = browserUuid();
@@ -124,7 +124,13 @@ export function useMission(): {
         const options = { mode: nextMode, seat: nextSeat, clientKey };
         const room = id
           ? await client.joinById(id.trim(), options)
-          : await client.create("mission", options);
+          : // Every table carries a code, even a solo one nobody will read
+            // out: the server mints its rooms the same way whoever opened it.
+            await client.create("mission", {
+              ...options,
+              code: String(Math.floor(Math.random() * 10000)).padStart(4, "0"),
+              players: 1,
+            });
         room.reconnection.enabled = false;
         if (generation.current !== attempt) {
           closeRoom(room);

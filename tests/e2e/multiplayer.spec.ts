@@ -8,6 +8,36 @@ import {
   type Seat,
 } from "@rifts/rules";
 
+/**
+ * Opens a cooperative mission from the master tab. The master tab holds no
+ * seat, so the four consoles are claimed separately; it stays open as the
+ * table's lobby until its host starts the mission.
+ *
+ * Returns the room id, which is what a console joins by. The four-digit code
+ * beside it is for people, not for URLs.
+ */
+async function openRoom(page: Page): Promise<string> {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Cooperative table", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+  const lobby = page.getByRole("region", { name: "Table lobby" });
+  await expect(lobby).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".lobby-code")).toHaveText(/^\d{4}$/);
+  return (await page.locator("[data-room]").getAttribute("data-room")) ?? "";
+}
+
+/** The host watches the crew land, then begins the mission. */
+async function startMission(page: Page): Promise<void> {
+  const start = page.getByRole("button", { name: "Start the mission" });
+  await expect(start).toBeEnabled({ timeout: 20_000 });
+  await start.click();
+  await expect(page.getByRole("region", { name: "Master map" })).toBeVisible({
+    timeout: 20_000,
+  });
+}
+
 type Snapshot = {
   view: MissionView;
   token: string;
@@ -15,9 +45,13 @@ type Snapshot = {
   onlineSeats: Seat[];
   clientKey: string;
 };
+/** A table code unique to this run, since the server refuses a live duplicate. */
+const freshCode = () =>
+  String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+
 async function connect(seat: Seat, roomId?: string, clientKey = randomUUID()) {
   const client = new Client("http://127.0.0.1:2568");
-  const options = { mode: "team", seat, clientKey };
+  const options = { mode: "team", seat, clientKey, code: freshCode() };
   const room = roomId
     ? await client.joinById(roomId, options)
     : await client.create("mission", options);
@@ -44,6 +78,11 @@ async function connect(seat: Seat, roomId?: string, clientKey = randomUUID()) {
         command,
       });
     },
+    // The table no longer starts itself when the last seat fills; its host
+    // starts it, having watched the crew land.
+    start() {
+      room.send("start", {});
+    },
   };
 }
 
@@ -58,6 +97,7 @@ test("authoritative rooms redact secrets, bind seats, and serialize shared costs
     expect(first.latest.view.artifact).toBe(true);
     for (const seat of missionSeats.slice(1))
       clients.push(await connect(seat, roomId));
+    first.start();
     await expect.poll(() => first.latest.started).toBe(true);
     for (const player of clients) {
       const wire = JSON.stringify(player.latest);
@@ -145,23 +185,21 @@ test.fixme("four independent browser seats see one world and different private e
   );
   try {
     let roomCode = "";
+    let master: Page | undefined;
     const pages = [];
     for (let i = 0; i < 4; i++) {
       const page = await contexts[i]!.newPage();
       pages.push(page);
-      await page.goto("/");
-      await page
-        .getByRole("button", { name: "Cooperative table", exact: true })
-        .click();
-      await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
-      if (roomCode)
-        await page.getByRole("textbox", { name: "Room code" }).fill(roomCode);
-      await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+      // The first context opens the mission from its master tab; every seat
+      // is then claimed by its own console.
+      master ??= await contexts[0]!.newPage();
+      if (!roomCode) roomCode = await openRoom(master);
+      await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
       await expect(page.locator(".connection-indicator")).toHaveText(
         "connected",
       );
-      roomCode = (await page.locator(".room-code").innerText()).trim();
     }
+    await startMission(master!);
     for (const page of pages)
       await expect(page.locator(".presence-notice")).toHaveCount(0);
     await expect(pages[0]!.locator(".die")).toHaveCount(5);
@@ -321,29 +359,20 @@ test("four tabs in one browser hold four seats, and the table screen stays publi
   // seat claim fail, which is what forced separate profiles per player.
   const context = await browser.newContext({ reducedMotion: "reduce" });
   try {
-    let roomCode = "";
+    const master = await context.newPage();
+    const roomCode = await openRoom(master);
     const tabs = [];
     for (let i = 0; i < 4; i++) {
       const page = await context.newPage();
       tabs.push(page);
-      if (roomCode) {
-        await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
-      } else {
-        await page.goto("/");
-        await page
-          .getByRole("button", { name: "Cooperative table", exact: true })
-          .click();
-        await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
-        await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
-      }
+      await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
       await expect(page.locator(".engine-heading .eyebrow")).toBeVisible({
         timeout: 20_000,
       });
-      if (!roomCode) {
-        roomCode = (await page.locator(".room-code").innerText()).trim();
-        expect(roomCode).not.toBe("");
-      }
     }
+    // The table waits for its host now, rather than starting itself when the
+    // last seat fills.
+    await startMission(master);
 
     // Every tab holds its own seat, so all four are online and the round starts.
     for (let i = 0; i < 4; i++) {
@@ -389,27 +418,20 @@ test("the master map is one shared surface, and stays public on a screen", async
   test.setTimeout(120_000);
   const context = await browser.newContext({ reducedMotion: "reduce" });
   try {
-    let roomCode = "";
+    const master = await context.newPage();
+    const roomCode = await openRoom(master);
     const tabs = [];
     for (let i = 0; i < 4; i++) {
       const page = await context.newPage();
       tabs.push(page);
-      if (roomCode) {
-        await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
-      } else {
-        await page.goto("/");
-        await page
-          .getByRole("button", { name: "Cooperative table", exact: true })
-          .click();
-        await page.getByLabel("Your specialist").selectOption(missionSeats[i]!);
-        await page.getByRole("button", { name: "Deploy to Greyhaven" }).click();
-      }
+      await page.goto(`/?room=${roomCode}&seat=${missionSeats[i]!}`);
       await expect(page.locator(".engine-heading .eyebrow")).toBeVisible({
         timeout: 20_000,
       });
-      if (!roomCode)
-        roomCode = (await page.locator(".room-code").innerText()).trim();
     }
+    // The table waits for its host now, rather than starting itself when the
+    // last seat fills.
+    await startMission(master);
     await expect(tabs[0]!.locator(".presence-notice")).toHaveCount(0);
 
     const secrets = await Promise.all(
@@ -451,9 +473,12 @@ test("the master map is one shared surface, and stays public on a screen", async
     await expect(table.locator(".table-room strong")).toHaveText(roomCode);
     await table.getByRole("button", { name: "Master map" }).click();
     const shared = table.getByRole("region", { name: "Master map" });
-    await expect(shared.getByText("Relay conduits")).toHaveCount(2, {
-      timeout: 20_000,
-    });
+    await expect(
+      shared.locator(".master-map-canvas").getByText("Relay conduits"),
+    ).toHaveCount(1, { timeout: 20_000 });
+    await expect(
+      shared.locator(".master-map-list").getByText("Relay conduits"),
+    ).toHaveCount(1);
     // Read-only: a screen holds no seat, so it cannot draw, erase or point.
     await expect(shared.locator(".master-map-tools")).toHaveCount(0);
     await expect(shared.locator(".master-map-compose")).toHaveCount(0);
@@ -461,5 +486,103 @@ test("the master map is one shared surface, and stays public on a screen", async
     for (const secret of secrets) expect(markup).not.toContain(secret);
   } finally {
     await context.close();
+  }
+});
+
+test("two players run two specialists each, joined by a four-digit code", async ({
+  browser,
+}) => {
+  test.setTimeout(210_000);
+  // Separate browsers, because this is the case that used to be impossible:
+  // one client key was bound to exactly one seat in a cooperative mission.
+  const one = await browser.newContext({ reducedMotion: "reduce" });
+  const two = await browser.newContext({ reducedMotion: "reduce" });
+  try {
+    const host = await one.newPage();
+    await host.goto("/");
+    await host
+      .getByRole("button", { name: "Cooperative table", exact: true })
+      .click();
+    await host.getByRole("button", { name: "2 players / 2 each" }).click();
+    await host.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await expect(host.getByRole("region", { name: "Table lobby" })).toBeVisible(
+      { timeout: 20_000 },
+    );
+
+    // Four digits, because it is read out rather than copied.
+    const code = (await host.locator(".lobby-code").innerText()).trim();
+    expect(code).toMatch(/^\d{4}$/);
+
+    // The lobby says what the mission is, because otherwise the roster asks
+    // you to pick a specialist with no idea what the team is walking into.
+    const brief = host.getByRole("region", { name: "Mission brief" });
+    await expect(brief).toBeVisible();
+    await expect(brief.locator(".mm-objective")).toHaveCount(4);
+    await expect(brief.locator(".mm-objective-scored")).toHaveCount(1);
+    // No round or instability yet: there is no mission running to count.
+    await expect(host.locator(".table-lobby .master-map-clock")).toHaveCount(0);
+
+    const claim = async (page: Page) => {
+      const open = page.getByRole("button", { name: "Run this specialist" });
+      const before = await open.count();
+      const [tab] = await Promise.all([
+        page.context().waitForEvent("page"),
+        open.first().click(),
+      ]);
+      await expect(tab.locator(".engine-heading .eyebrow")).toBeVisible({
+        timeout: 20_000,
+      });
+      // Wait for the roster to register the claim before claiming again: a
+      // second click on a stale button reopens the same named window, and no
+      // new page event ever arrives. Fewer rather than one fewer, because the
+      // claim that reaches this player's cap relabels every remaining seat.
+      await expect
+        .poll(() => open.count(), { timeout: 20_000 })
+        .toBeLessThan(before);
+      return tab;
+    };
+    await claim(host);
+    await claim(host);
+    // Two each, and no more: the cap is the table's player count.
+    await expect(
+      host.getByRole("button", { name: "Run this specialist" }),
+    ).toHaveCount(0);
+
+    // The second player joins with the code alone, from another browser.
+    const guest = await two.newPage();
+    await guest.goto("/");
+    await guest
+      .getByRole("button", { name: "Cooperative table", exact: true })
+      .click();
+    await guest.getByRole("textbox", { name: "Table code" }).fill(code);
+    await guest.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await expect(
+      guest.getByRole("region", { name: "Table lobby" }),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(guest.locator(".lobby-code")).toHaveText(code);
+    // Only the table that opened the mission starts it.
+    await expect(
+      guest.getByRole("button", { name: /Start the mission/ }),
+    ).toHaveCount(0);
+    await claim(guest);
+    await claim(guest);
+
+    // The host watches them land and begins.
+    await expect(host.getByText("4 of 4 specialists claimed.")).toBeVisible({
+      timeout: 20_000,
+    });
+    await startMission(host);
+    await expect(guest.getByRole("region", { name: "Master map" })).toBeVisible(
+      { timeout: 20_000 },
+    );
+
+    // Both players land on the mission together. Drawing from a master tab
+    // and the read-only shared screen are covered by the surface test above.
+    await expect(host.getByRole("region", { name: "Master map" })).toBeVisible({
+      timeout: 20_000,
+    });
+  } finally {
+    await one.close();
+    await two.close();
   }
 });

@@ -141,7 +141,9 @@ export function App() {
   const [lobbyMode, setLobbyMode] = useState<"practice" | "team">(
     link ? "team" : "practice",
   );
-  const [invite, setInvite] = useState(link?.room ?? "");
+  const [invite, setInvite] = useState("");
+  /** People at the table. Four specialists either way; this splits them. */
+  const [lobbyPlayers, setLobbyPlayers] = useState<2 | 4>(4);
   const [help, setHelp] = useState(false);
   const [artifact, setArtifact] = useState(false);
   const [history, setHistory] = useState(false);
@@ -1254,16 +1256,31 @@ export function App() {
                 {lobbyMode === "team" && (
                   <div className="join-controls">
                     <p className="join-note">
-                      You claim your specialist on the master tab, which opens
-                      their console in its own window.
+                      The mission is always four specialists. How many people
+                      are running them decides how many each of you claims.
                     </p>
+                    <div className="mode-toggle" role="group">
+                      {([2, 4] as const).map((count) => (
+                        <button
+                          key={count}
+                          className={lobbyPlayers === count ? "selected" : ""}
+                          onClick={() => setLobbyPlayers(count)}
+                        >
+                          {count} players / {4 / count} each
+                        </button>
+                      ))}
+                    </div>
                     <label>
-                      Room code
+                      Table code
                       <input
-                        aria-label="Room code"
-                        placeholder="Leave blank to create a table"
+                        aria-label="Table code"
+                        inputMode="numeric"
+                        maxLength={4}
+                        placeholder="Leave blank to open a table"
                         value={invite}
-                        onChange={(e) => setInvite(e.target.value)}
+                        onChange={(e) =>
+                          setInvite(e.target.value.replace(/\D/g, ""))
+                        }
                       />
                     </label>
                   </div>
@@ -1294,10 +1311,10 @@ export function App() {
                     // holds no seat and spawns a console per specialist. Solo
                     // keeps one tab and switches between map and console.
                     if (lobbyMode === "team") {
-                      const room = invite.trim();
-                      window.location.href = room
-                        ? `/?master=1&room=${encodeURIComponent(room)}`
-                        : "/?master=1";
+                      const code = invite.trim();
+                      window.location.href = code
+                        ? `/?master=1&code=${encodeURIComponent(code)}`
+                        : `/?master=1&players=${lobbyPlayers}`;
                       return;
                     }
                     // Only the solo table reaches here, and it always opens

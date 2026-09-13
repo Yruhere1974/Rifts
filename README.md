@@ -23,6 +23,8 @@ Open **http://localhost:5174**. The game server uses port **2568**, proxied thro
 
 Choose **Solo table** to explore all four seats in one tab, or **Cooperative table** to open a mission from its **master tab**.
 
+A cooperative table is opened for a number of people, not a number of characters: the mission is always four specialists, and the player count decides how many each person claims. Two players take two each, four take one each. Opening a table mints a **four-digit code**; anyone who types it into **Cooperative table** lands in the same lobby. The host watches the crew arrive and presses **Start the mission**, which is when the map opens.
+
 The master tab is the page a cooperative mission is opened from and the one that stays open beside it. It carries the mission brief and the master map, and it holds no seat: it never counts toward the four, never gates the round and is never forfeited. Its crew roster claims specialists, and claiming one opens that specialist's console in its own browser tab. So each player ends up with two tabs — the map they plan on, and the unit they run — and switches between them rather than between screens. The solo table keeps the single-tab switch instead.
 
 A master tab may draw on the map as a seat its own browser has claimed, because the console it spawns inherits its client key and the server can tell they are one person. A shared screen owns nothing and stays read-only. Seat ownership is per browser tab, so four tabs on one machine can hold four different specialists, as can four separate devices. Reloading a tab reclaims its seat; closing it releases the claim. All four must join before spending capability. Reading and requesting help are available while assembling the team.

@@ -17,13 +17,18 @@ const isTable = params.get("table") === "1";
 // The master tab: opens the mission, keeps the map, spawns a console per seat.
 const isMaster = params.get("master") === "1";
 const room = params.get("room");
+// A code joins somebody else's table; its absence means opening one.
+const code = params.get("code");
+const players = ([1, 2, 4] as const).find(
+  (count) => String(count) === params.get("players"),
+);
 
 createRoot(root).render(
   <StrictMode>
     {isTable ? (
       <TableScreen roomId={room} />
     ) : isMaster ? (
-      <MasterScreen roomId={room} />
+      <MasterScreen roomId={room} code={code} players={players ?? 4} />
     ) : (
       <App />
     )}

@@ -15,6 +15,13 @@ import {
   seatMessageSchema,
 } from "./messages.js";
 
+/**
+ * Codes in play on this server. A table's code has to be unique while it is
+ * live or a guest could be matched to the wrong mission; the process holds
+ * them because it also holds the rooms.
+ */
+const liveCodes = new Set<string>();
+
 type Role = "player" | "table" | "master";
 type Session = {
   token: string;
@@ -30,11 +37,26 @@ export class MissionRoom extends Room {
   private readonly sessions = new Map<string, Session>();
   private readonly owners = new Map<Seat, string>();
   private started = false;
+  private code = "";
+  /** How many specialists one browser may claim. Four seats, split by people. */
+  private seatsPerPlayer = 1;
+  /** The browser that opened the table. Only it can start the mission. */
+  private hostKey: string | null = null;
 
   override onCreate(options: unknown): void {
     const parsed = joinOptionsSchema.safeParse(options);
     if (!parsed.success) throw new ServerError(400, "Invalid mission options.");
     this.mode = parsed.data.mode;
+    if (!parsed.data.code)
+      throw new ServerError(400, "A mission needs a table code.");
+    this.code = parsed.data.code;
+    if (liveCodes.has(this.code))
+      throw new ServerError(409, "That table code is already in use.");
+    liveCodes.add(this.code);
+    this.seatsPerPlayer = Math.max(
+      1,
+      Math.floor(missionSeats.length / parsed.data.players),
+    );
     this.mission = createMission(
       this.mode === "practice" ? 1 : randomInt(1, 0x100000000),
     );
@@ -106,6 +128,24 @@ export class MissionRoom extends Room {
       // Relayed, not stored: pointing is transient and carries no state.
       this.broadcast("ping", { seat: session.seat, hex: parsed.data.hex });
     });
+    // The table starts when the host says so, not when the last seat fills:
+    // a host wants to see everyone land before the first round is live.
+    this.onMessage("start", (client) => {
+      const session = this.sessions.get(client.sessionId);
+      if (!session || session.clientKey !== this.hostKey) {
+        this.reject(
+          client,
+          "Only the table that opened the mission starts it.",
+        );
+        return;
+      }
+      if (this.owners.size < missionSeats.length) {
+        this.reject(client, "Every specialist needs somebody running them.");
+        return;
+      }
+      this.started = true;
+      this.sendViews();
+    });
     this.onMessage("seat", (client, payload: unknown) => {
       const parsed = seatMessageSchema.safeParse(payload);
       const session = this.sessions.get(client.sessionId);
@@ -145,17 +185,24 @@ export class MissionRoom extends Room {
         403,
         "This specialist is reserved for its original player.",
       );
-    if (
-      this.mode === "team" &&
-      [...this.owners].some(
-        ([seat, key]) => key === clientKey && seat !== parsed.data.seat,
-      )
-    )
-      throw new ServerError(403, "Your seat is fixed for this mission.");
+    // A browser may run as many specialists as its table's player count gives
+    // it, and no more. That cap is also the privacy rule: a console only ever
+    // shows the seat it claimed, so seats you cannot claim you cannot read.
+    const held = [...this.owners].filter(
+      ([seat, key]) => key === clientKey && seat !== parsed.data.seat,
+    ).length;
+    if (this.mode === "team" && held >= this.seatsPerPlayer)
+      throw new ServerError(
+        403,
+        this.seatsPerPlayer === 1
+          ? "Your seat is fixed for this mission."
+          : `You are already running ${this.seatsPerPlayer} specialists.`,
+      );
     return { token, seat: parsed.data.seat, clientKey, role };
   }
 
   override onJoin(client: Client, _options: unknown, auth: Session): void {
+    this.hostKey ??= auth.clientKey;
     if (auth.role !== "player") {
       this.sessions.set(client.sessionId, auth);
       this.sendView(client);
@@ -175,8 +222,11 @@ export class MissionRoom extends Room {
     }
     this.sessions.set(client.sessionId, auth);
     this.owners.set(auth.seat, auth.clientKey);
-    if (this.seated().length === 4) this.started = true;
     this.sendViews(client);
+  }
+
+  override onDispose(): void {
+    liveCodes.delete(this.code);
   }
 
   override onLeave(client: Client): void {
@@ -247,6 +297,10 @@ export class MissionRoom extends Room {
         mode: this.mode,
         onlineSeats,
         started: this.started,
+        code: this.code,
+        claimedSeats: [...this.owners.keys()],
+        seatsPerPlayer: this.seatsPerPlayer,
+        host: session.clientKey === this.hostKey,
         token: session.token,
         seat: session.seat,
         /** Seats this browser has claimed, so the roster knows what it runs. */
@@ -263,6 +317,8 @@ export class MissionRoom extends Room {
       token: session.token,
       onlineSeats,
       started: this.started,
+      code: this.code,
+      claimedSeats: [...this.owners.keys()],
       clientKey: session.clientKey,
     });
   }

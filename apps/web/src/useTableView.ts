@@ -16,6 +16,10 @@ type TableMessage = {
   seat: Seat;
   ownedSeats: Seat[];
   token: string;
+  code: string;
+  claimedSeats: Seat[];
+  seatsPerPlayer: number;
+  host: boolean;
 };
 
 function closeRoom(room: Room | null): void {
@@ -48,6 +52,10 @@ export function useTableView(
      * a spawned tab inherits, so the server can tell they are one person.
      */
     role?: "table" | "master";
+    /** The four digits a table shares. Opening one mints it; joining uses it. */
+    code?: string;
+    /** People at the table, which decides how many seats one browser claims. */
+    players?: 1 | 2 | 4;
   },
 ): {
   view: MissionTableView | null;
@@ -58,9 +66,14 @@ export function useTableView(
   error: string | null;
   roomId: string | null;
   ownedSeats: Seat[];
+  code: string;
+  claimedSeats: Seat[];
+  seatsPerPlayer: number;
+  host: boolean;
   send: (command: unknown) => void;
   ping: (hex: string) => void;
   claim: (seat: Seat) => void;
+  start: () => void;
 } {
   const [view, setView] = useState<MissionTableView | null>(null);
   const [pings, setPings] = useState<MissionPing[]>([]);
@@ -74,6 +87,10 @@ export function useTableView(
   const [error, setError] = useState<string | null>(null);
   const [joinedId, setJoinedId] = useState<string | null>(roomId);
   const [ownedSeats, setOwnedSeats] = useState<Seat[]>([]);
+  const [code, setCode] = useState("");
+  const [claimedSeats, setClaimedSeats] = useState<Seat[]>([]);
+  const [seatsPerPlayer, setSeatsPerPlayer] = useState(1);
+  const [host, setHost] = useState(false);
   const tokenRef = useRef<string>("");
   const roomRef = useRef<Room | null>(null);
   // One connection per room for the life of the page. A remounted effect must
@@ -85,7 +102,11 @@ export function useTableView(
   const mode = options?.mode ?? "team";
   const seat = options?.seat ?? "dice";
   const role = options?.role ?? "table";
-  const key = roomId ?? (create ? `create:${mode}` : null);
+  const joinCode = options?.code ?? "";
+  const players = options?.players ?? 4;
+  // Three ways in, and each is its own connection intent: open a table, join
+  // one by its code, or attach to a known room as a screen.
+  const key = roomId ?? (create ? `create:${joinCode}` : joinCode || null);
 
   useEffect(() => {
     if (!key || connectedTo.current === key) return;
@@ -106,7 +127,15 @@ export function useTableView(
         };
         const room = roomId
           ? await client.joinById(roomId.trim(), joinOptions)
-          : await client.create("mission", joinOptions);
+          : create
+            ? await client.create("mission", {
+                ...joinOptions,
+                code: joinCode,
+                players,
+              })
+            : // Matched on the code, so this reaches the table that minted it
+              // rather than any open room; a wrong code finds nothing.
+              await client.join("mission", { ...joinOptions, code: joinCode });
         room.reconnection.enabled = false;
         roomRef.current = room;
         setJoinedId(room.roomId);
@@ -116,6 +145,10 @@ export function useTableView(
           setOnlineSeats(message.onlineSeats);
           setStarted(message.started);
           setOwnedSeats(message.ownedSeats);
+          setCode(message.code);
+          setClaimedSeats(message.claimedSeats);
+          setSeatsPerPlayer(message.seatsPerPlayer);
+          setHost(message.host);
           tokenRef.current = message.token;
           setStatus("connected");
           setError(null);
@@ -158,7 +191,7 @@ export function useTableView(
       }
     };
     void join();
-  }, [key, roomId, mode, seat, create, role]);
+  }, [key, roomId, mode, seat, create, role, joinCode, players]);
 
   // Close only when the page really goes away, never on a remount.
   useEffect(
@@ -180,6 +213,10 @@ export function useTableView(
     error,
     roomId: joinedId,
     ownedSeats,
+    code,
+    claimedSeats,
+    seatsPerPlayer,
+    host,
     send: (command: unknown) =>
       roomRef.current?.send("command", { token: tokenRef.current, command }),
     ping: (hex: string) =>
@@ -188,5 +225,6 @@ export function useTableView(
     // ownership when the mark is drawn, never when the seat is named.
     claim: (next: Seat) =>
       roomRef.current?.send("seat", { token: tokenRef.current, seat: next }),
+    start: () => roomRef.current?.send("start", {}),
   };
 }

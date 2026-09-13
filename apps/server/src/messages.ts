@@ -7,6 +7,21 @@ export const joinOptionsSchema = z.object({
   seat: seatSchema,
   clientKey: z.string().uuid(),
   /**
+   * The four digits a table shares to get people in. Short enough to read
+   * down a phone; the room id is not. Rooms are matched on it, so a guest
+   * joining with a code reaches the table that created it.
+   */
+  code: z
+    .string()
+    .regex(/^\d{4}$/)
+    .optional(),
+  /**
+   * How many people are playing. The mission is always four specialists, so
+   * this only decides how many of them one browser may claim: one person
+   * runs all four, two run two each, four run one each.
+   */
+  players: z.union([z.literal(1), z.literal(2), z.literal(4)]).default(4),
+  /**
    * A "table" client is a shared screen: no seat, no commands, public view
    * only. A "master" client is the tab a player keeps beside their console:
    * also seatless and also public-view-only, but it may draw on the master

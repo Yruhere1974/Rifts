@@ -842,7 +842,8 @@ function SystemsEngine({
 }: EngineProps) {
   const engine = view.engine;
   const markers = engine.markers;
-  const arrivals = useArrivals(markers);
+  // The opening set of components drops in like every later one.
+  const arrivals = useArrivals(markers, true);
   const order = arrivalOrder(markers, arrivals);
   const built = engine.sockets
     .map((held, index) => (held ? `${index}` : ""))

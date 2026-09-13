@@ -715,3 +715,61 @@ test("a push pulls the token out of the bag and turns it over", async ({
     await context.close();
   }
 });
+
+test("the Wizard's components drop into the rail", async ({
+  page,
+  browser,
+}) => {
+  await deploy(page);
+  await seat(page, "Techno-Wizard");
+  await expect(page.locator(".placement-marker")).toHaveCount(4);
+  // Reduced is the degraded path: the components are simply in the rail.
+  expect(
+    await page.evaluate(
+      () =>
+        [...document.querySelectorAll(".placement-marker")].flatMap((m) =>
+          m.getAnimations(),
+        ).length,
+    ),
+  ).toBe(0);
+
+  const context = await browser.newContext({ reducedMotion: "no-preference" });
+  try {
+    const dropping = await context.newPage();
+    await dropping.goto("/");
+    await dropping.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await dropping.getByRole("button", { name: "Take your seat" }).click();
+    await dropping.locator(".die").first().waitFor();
+    await dropping
+      .locator(".crew-seat")
+      .filter({ hasText: "Techno-Wizard" })
+      .click();
+    await dropping.locator(".placement-marker").first().waitFor();
+
+    const drop = await dropping.evaluate(() => {
+      const anims = [...document.querySelectorAll(".placement-marker")].flatMap(
+        (m) => m.getAnimations(),
+      );
+      return {
+        names: [
+          ...new Set(anims.map((a) => (a as CSSAnimation).animationName)),
+        ],
+        durations: [
+          ...new Set(anims.map((a) => a.effect!.getTiming().duration)),
+        ],
+        delays: anims.map((a) => a.effect!.getTiming().delay ?? 0),
+      };
+    });
+    // Its own dialect: a short fall, not the dice's throw or the cards' slide.
+    expect(drop.names).toEqual(["rifts-marker-drop"]);
+    // Short on purpose, because four land in sequence before a round starts.
+    expect(drop.durations).toEqual([320]);
+    expect(new Set(drop.delays).size).toBeGreaterThan(1);
+
+    // Rounds are simultaneous, so a component is selectable as it lands.
+    await dropping.locator(".placement-marker").first().click();
+    await expect(dropping.locator(".placement-marker.selected")).toHaveCount(1);
+  } finally {
+    await context.close();
+  }
+});

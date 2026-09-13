@@ -2400,6 +2400,43 @@ select {
   animation-delay: var(--motion-delay, 0ms);
 }
 
+/* The Wizard's components are dropped into the rail rather than faded in: a
+   short vertical fall that accelerates, lands with a squash and rebounds once.
+   No travel and no rotation, which is what separates this from the other three
+   engines: dice are thrown and square up, cards slide off a deck and
+   straighten, tokens are pulled and turn over, components simply drop. Short
+   on purpose, because four of them land in sequence and a long fall each would
+   hold up a round that has not started. */
+@keyframes rifts-marker-drop {
+  0% {
+    opacity: 0;
+    translate: 0 -24px;
+    scale: 1;
+    /* Gravity accelerates; only the landing eases. */
+    animation-timing-function: cubic-bezier(0.45, 0, 0.9, 0.9);
+  }
+  30% {
+    opacity: 1;
+  }
+  55% {
+    translate: 0 0;
+    scale: 1.09 0.88;
+  }
+  76% {
+    translate: 0 -4px;
+    scale: 0.97 1.04;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+.placement-marker.motion-arrive {
+  animation: rifts-marker-drop var(--motion-settle) var(--ease-settle) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
 /* Cards are dealt off the network rather than fading in: each one slides out
    from the deck at the left, so a card landing further right has visibly
    travelled further, and straightens as it lands. Independent properties, as

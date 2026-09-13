@@ -496,6 +496,20 @@ test("the master tab spawns a console, keeps its own tab, and plans beside it", 
     );
     await expect(master.getByText("Yours")).toBeVisible();
 
+    // Claiming binds this browser for the mission. The other three stay open
+    // for the rest of the crew, but this tab can no longer take them: the
+    // server always refused, and the roster used to offer it anyway and open
+    // a tab that died with "Your seat is fixed for this mission."
+    await expect(
+      master.getByRole("button", { name: "Run this specialist" }),
+    ).toHaveCount(0);
+    for (const label of ["For another player", "Being run"]) {
+      const offered = master.getByRole("button", { name: label });
+      for (let i = 0; i < (await offered.count()); i++)
+        await expect(offered.nth(i)).toBeDisabled();
+    }
+    await expect(master.getByText(/You are running Glitter Boy/)).toBeVisible();
+
     // Owning the seat is what unlocks planning, and the mark carries to the
     // console tab because both are looking at one surface.
     await expect(map.locator(".master-map-tools")).toHaveCount(1);

@@ -31,8 +31,15 @@ export function MasterScreen({ roomId }: { roomId: string | null }) {
   });
   const { view } = table;
 
+  /**
+   * A browser claims one specialist for the mission and keeps it. The server
+   * has always enforced that; the roster used to offer the other three anyway
+   * and the tab it opened died with "Your seat is fixed for this mission."
+   */
+  const bound = table.ownedSeats[0] ?? null;
+
   const spawn = (seat: Seat) => {
-    if (!table.roomId) return;
+    if (!table.roomId || (bound !== null && bound !== seat)) return;
     setPlanning(seat);
     table.claim(seat);
     window.open(consoleUrl(table.roomId, seat), `rifts-${seat}`);
@@ -68,26 +75,38 @@ export function MasterScreen({ roomId }: { roomId: string | null }) {
               <p>{identity.family}</p>
               <button
                 type="button"
-                disabled={!table.roomId || (online && !mine)}
+                disabled={
+                  !table.roomId ||
+                  (online && !mine) ||
+                  (bound !== null && !mine)
+                }
                 onClick={() => spawn(seat)}
               >
                 <ExternalLink size={14} />
-                {mine ? "Reopen console" : "Run this specialist"}
+                {mine
+                  ? "Reopen console"
+                  : online
+                    ? "Being run"
+                    : bound !== null
+                      ? "For another player"
+                      : "Run this specialist"}
               </button>
             </li>
           );
         })}
       </ul>
-      {table.ownedSeats.length > 0 && (
+      {bound !== null ? (
         <p className="master-map-hint">
-          Drawing as {identities[planning].title}. Their console is in its own
-          tab; this one stays on the map.
+          You are running {identities[bound].title} for this mission, and draw
+          on the map as them. Their console is in its own tab; this one stays on
+          the map. The others are for the rest of the crew — send them the room
+          code.
         </p>
-      )}
-      {table.ownedSeats.length === 0 && (
+      ) : (
         <p className="master-map-hint">
-          Claim a specialist to open their console. Until then this tab can read
-          the map but not draw on it.
+          Claim a specialist to open their console. You keep them for the
+          mission, so the other three stay open for everyone else. Until you
+          claim one this tab can read the map but not draw on it.
         </p>
       )}
     </section>

@@ -31,6 +31,8 @@ A master tab may draw on the map as a seat its own browser has claimed, because 
 
 The Glitter Boy's dice are thrown across the tray at the start of each round and settle into routing order, low to high, because routing surge to a system browns out every loose die showing lower.
 
+The Juicer's tokens are pulled out of the bag and turn over as they land, so what a push found is the last thing to read.
+
 The Ley Line Walker deals from a ley network of 21 links rather than from a fixed list, so no two missions open on the same hand. Woven links return to the network and are shuffled back in when it runs out, and the count beside the hand is how much is left.
 
 ### Master Map

@@ -650,3 +650,68 @@ test("the Walker's hand is dealt off a ley network with a visible count", async 
     await context.close();
   }
 });
+
+test("a push pulls the token out of the bag and turns it over", async ({
+  page,
+  browser,
+}) => {
+  // Reduced is the degraded path: the token is simply there, and readable.
+  await deploy(page);
+  await seat(page, "Juicer");
+  const push = page.getByRole("button", {
+    name: "Push for another surge token",
+  });
+  await push.click();
+  await expect(page.locator(".bag-token")).toHaveCount(1);
+  const still = await page.evaluate(() => {
+    const token = document.querySelector(".bag-token")!;
+    return {
+      running: [
+        ...token.getAnimations(),
+        ...[...token.children].flatMap((c) => c.getAnimations()),
+      ].length,
+      face: getComputedStyle(token.children[1]!).opacity,
+    };
+  });
+  expect(still.running).toBe(0);
+  expect(still.face).toBe("1");
+
+  const context = await browser.newContext({ reducedMotion: "no-preference" });
+  try {
+    const pulling = await context.newPage();
+    await pulling.goto("/");
+    await pulling.getByRole("button", { name: "Deploy to Greyhaven" }).click();
+    await pulling.getByRole("button", { name: "Take your seat" }).click();
+    await pulling.locator(".die").first().waitFor();
+    await pulling.locator(".crew-seat").filter({ hasText: "Juicer" }).click();
+    await pulling
+      .getByRole("button", { name: "Push for another surge token" })
+      .click();
+    await pulling.locator(".bag-token").first().waitFor();
+
+    const pull = await pulling.evaluate(() => {
+      const token = document.querySelector(".bag-token")!;
+      return {
+        token: token
+          .getAnimations()
+          .map((a) => (a as CSSAnimation).animationName),
+        face: [...token.children]
+          .flatMap((c) => c.getAnimations())
+          .map((a) => (a as CSSAnimation).animationName),
+        bag: document.querySelector(".draw-bag")!.getAnimations().length,
+      };
+    });
+    // The token is pulled from the bag, and its kind is what the flip reveals,
+    // so the reveal lands last on the token the server already drew.
+    expect(pull.token).toEqual(["rifts-bag-pull"]);
+    expect(new Set(pull.face)).toEqual(new Set(["rifts-bag-face"]));
+    // The bag gives as the hand goes in rather than only the button clicking.
+    expect(pull.bag).toBeGreaterThan(0);
+
+    // Rounds are simultaneous, so a token is holdable while still arriving.
+    await pulling.locator(".bag-token").first().click();
+    await expect(pulling.locator(".bag-token.held")).toHaveCount(1);
+  } finally {
+    await context.close();
+  }
+});

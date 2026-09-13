@@ -683,12 +683,17 @@ function BagEngine({ view, disabled, onDraw, onKeep }: EngineProps) {
     // its DOM node: a player pushing from the keyboard must not lose focus.
     const jolt = node.animate(
       [
-        { transform: "translateY(0)" },
-        { transform: "translateY(5px)" },
-        { transform: "translateY(0)" },
+        { transform: "translateY(0) scaleX(1) scaleY(1)", offset: 0 },
+        // Squeezed as the hand goes in, so the bag gives rather than clicks.
+        { transform: "translateY(6px) scaleX(1.05) scaleY(0.93)", offset: 0.3 },
+        {
+          transform: "translateY(-2px) scaleX(0.98) scaleY(1.03)",
+          offset: 0.62,
+        },
+        { transform: "translateY(0) scaleX(1) scaleY(1)", offset: 1 },
       ],
       {
-        duration: MOTION.quick * 1.5,
+        duration: MOTION.settle,
         easing: "cubic-bezier(0.2, 0.9, 0.25, 1)",
       },
     );
@@ -713,7 +718,7 @@ function BagEngine({ view, disabled, onDraw, onKeep }: EngineProps) {
       </button>
       <div className="bag-pulls">
         <div className="token-tray">
-          {pending.map((token) => (
+          {pending.map((token, position) => (
             <button
               key={token.id}
               type="button"
@@ -723,7 +728,13 @@ function BagEngine({ view, disabled, onDraw, onKeep }: EngineProps) {
                 token.kept && "held",
                 arrivals.has(token.id) && "motion-arrive",
               )}
-              style={delayStyle(staggerDelay(order.get(token.id) ?? 0))}
+              style={
+                {
+                  ...delayStyle(staggerDelay(order.get(token.id) ?? 0)),
+                  // How far this token was pulled from the bag's mouth.
+                  "--pull-index": position,
+                } as CSSProperties
+              }
               disabled={disabled}
               onClick={() => onKeep(token.id)}
               aria-label={`${token.kind} token in surge, ${

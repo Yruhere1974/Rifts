@@ -2560,10 +2560,62 @@ select {
     infinite;
 }
 
-/* Bag: a drawn token is a single beat, not a dealt hand, so it lands quicker
-   than the trays that cascade. */
+/* Bag: a token is pulled out of the bag rather than appearing above the tray.
+   It comes from the bag's mouth at the left, rises as it clears it, and turns
+   over as it lands: the pinch at 62% is the token flipping face up, which is
+   why its kind is unreadable until then. That ordering is the same rule the
+   dice follow, where the face settles last and on the value the server
+   already drew. One beat rather than a cascade, because a push is one pull.
+
+   Independent properties throughout, so this composes with the lift that
+   .bag-token.selected sets on every token in a live surge. */
+@keyframes rifts-bag-pull {
+  0% {
+    opacity: 0;
+    translate: calc(var(--pull-index, 0) * -62px - 104px) 10px;
+    rotate: -16deg;
+    scale: 0.62;
+    animation-timing-function: cubic-bezier(0.35, 0.05, 0.35, 1);
+  }
+  30% {
+    opacity: 1;
+  }
+  55% {
+    translate: 0 -7px;
+    rotate: 6deg;
+    scale: 1.04;
+  }
+  /* The turn. Narrow rather than mirrored, so it reads as a flip on the spot
+     and never shows the label reversed. */
+  68% {
+    translate: 0 -3px;
+    rotate: 0deg;
+    scale: 0.1 1.06;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+  }
+}
 .bag-token.motion-arrive {
-  animation-duration: var(--motion-quick);
+  animation: rifts-bag-pull var(--motion-travel) var(--ease-settle) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+/* The kind is what the flip reveals, so it is not readable before it. */
+@keyframes rifts-bag-face {
+  0%,
+  67% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.bag-token.motion-arrive > * {
+  animation: rifts-bag-face var(--motion-travel) linear backwards;
+  animation-delay: var(--motion-delay, 0ms);
 }
 
 /* Bag: the one place agitation is information. The live bust band tunes the

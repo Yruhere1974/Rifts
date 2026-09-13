@@ -195,10 +195,32 @@ type EngineProps = {
 /** How long the reveal rests on each face before moving to the next. */
 const TUMBLE = Math.round(MOTION.instant / 2);
 
+type Throw = { x: number; y: number; rot: number };
+
+/**
+ * Where a die is thrown from. Derived from its id rather than random, so a
+ * re-render never re-throws a die that is already lying still, and different
+ * every round, because a die id carries its round. Every die comes in from
+ * the same side: the tray is a table somebody rolled across, not a scatter
+ * of independent arrivals.
+ */
+function throwFrom(id: string): Throw {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  const at = (shift: number, span: number) => Math.abs(hash >> shift) % span;
+  return {
+    x: -(90 + at(0, 80)),
+    y: -(8 + at(5, 30)),
+    // A big angle that resolves to zero, which is the die squaring up.
+    rot: (at(11, 2) ? 1 : -1) * (150 + at(13, 210)),
+  };
+}
+
 function Die({
   value,
   index,
   arriving,
+  throwFrom: thrown,
   reduced,
   selected,
   doomed,
@@ -207,6 +229,7 @@ function Die({
   value: number;
   index: number;
   arriving: boolean;
+  throwFrom: Throw;
   reduced: boolean;
   selected: boolean;
   /** Would vent if the die currently held were routed. */
@@ -229,7 +252,7 @@ function Die({
         clearInterval(spin);
         setTumbling(false);
       },
-      start + MOTION.settle - MOTION.instant,
+      start + MOTION.travel - MOTION.instant,
     );
     return () => {
       clearTimeout(begin);
@@ -250,7 +273,14 @@ function Die({
         shown >= 4 && "can-engage",
         arriving && "motion-arrive",
       )}
-      style={delayStyle(staggerDelay(index))}
+      style={
+        {
+          ...delayStyle(staggerDelay(index)),
+          "--throw-x": `${thrown.x}px`,
+          "--throw-y": `${thrown.y}px`,
+          "--throw-rot": `${thrown.rot}deg`,
+        } as CSSProperties
+      }
     >
       <span className="die-face">
         {Array.from({ length: 9 }, (_, i) => (
@@ -294,11 +324,17 @@ function DiceEngine({
 }: EngineProps & { onAllocate: (die: string, facet: DieSlot) => void }) {
   const dice = view.engine.dice;
   const reduced = useReducedMotion();
-  const ids = dice.map((die) => die.id);
-  const arrivals = useArrivals(ids);
+  // The tray reads low to high, because routing order is the whole decision:
+  // sending surge to a system browns out every loose die showing lower, so an
+  // unsorted tray hides the cost of taking the top die first.
+  const loose = dice
+    .filter((die) => die.facet === null)
+    .sort((a, b) => a.value - b.value || a.id.localeCompare(b.id));
+  const ids = loose.map((die) => die.id);
+  // The opening tray is a real roll, so it arrives like every later one.
+  const arrivals = useArrivals(ids, true);
   const order = arrivalOrder(ids, arrivals);
   const spend = useDeparture(dice.length);
-  const loose = dice.filter((die) => die.facet === null);
   const engine = view.engine;
   const spare = engine.capacity - engine.routings;
   // The selected die, whether it is still loose or already past the manifold:
@@ -322,6 +358,7 @@ function DiceEngine({
             value={die.value}
             index={order.get(die.id) ?? 0}
             arriving={arrivals.has(die.id)}
+            throwFrom={throwFrom(die.id)}
             reduced={reduced}
             selected={selected.includes(die.id)}
             doomed={doomed.has(die.id)}
@@ -473,7 +510,8 @@ const wants = (chain: readonly MissionCard[]): string => {
 function CardsEngine({ view, selected, piece }: EngineProps) {
   const hand = view.engine.hand;
   const ids = hand.map((card) => card.id);
-  const arrivals = useArrivals(ids);
+  // The opening hand is dealt from the network like every later draw.
+  const arrivals = useArrivals(ids, true);
   const order = arrivalOrder(ids, arrivals);
   // Selection order is chain order, so a player builds the weave in the
   // sequence they intend rather than in the order the hand happens to sit.
@@ -535,7 +573,14 @@ function CardsEngine({ view, selected, piece }: EngineProps) {
   return (
     <div className="cards-engine">
       <div className="card-hand" ref={handRef}>
-        {hand.map((card) => (
+        {/* The network the hand is dealt from, and the pile cards come off.
+            Its count is the Walker's own information: how much ley is left
+            before what has been woven is shuffled back in. */}
+        <div className="ley-deck" aria-label="Ley network">
+          <span className="ley-deck-count">{view.engine.deckRemaining}</span>
+          <span className="ley-deck-label">LEY</span>
+        </div>
+        {hand.map((card, position) => (
           <button
             key={card.id}
             {...piece(card.id)}
@@ -545,7 +590,13 @@ function CardsEngine({ view, selected, piece }: EngineProps) {
               selected.includes(card.id) && "selected",
               arrivals.has(card.id) && "motion-arrive",
             )}
-            style={delayStyle(staggerDelay(order.get(card.id) ?? 0))}
+            style={
+              {
+                ...delayStyle(staggerDelay(order.get(card.id) ?? 0)),
+                // How far this card slid off the deck to reach its place.
+                "--deal-index": position,
+              } as CSSProperties
+            }
             aria-label={`${card.name} card`}
           >
             <span className="card-type">{kindLabel(card.kind)}</span>
@@ -632,12 +683,17 @@ function BagEngine({ view, disabled, onDraw, onKeep }: EngineProps) {
     // its DOM node: a player pushing from the keyboard must not lose focus.
     const jolt = node.animate(
       [
-        { transform: "translateY(0)" },
-        { transform: "translateY(5px)" },
-        { transform: "translateY(0)" },
+        { transform: "translateY(0) scaleX(1) scaleY(1)", offset: 0 },
+        // Squeezed as the hand goes in, so the bag gives rather than clicks.
+        { transform: "translateY(6px) scaleX(1.05) scaleY(0.93)", offset: 0.3 },
+        {
+          transform: "translateY(-2px) scaleX(0.98) scaleY(1.03)",
+          offset: 0.62,
+        },
+        { transform: "translateY(0) scaleX(1) scaleY(1)", offset: 1 },
       ],
       {
-        duration: MOTION.quick * 1.5,
+        duration: MOTION.settle,
         easing: "cubic-bezier(0.2, 0.9, 0.25, 1)",
       },
     );
@@ -662,7 +718,7 @@ function BagEngine({ view, disabled, onDraw, onKeep }: EngineProps) {
       </button>
       <div className="bag-pulls">
         <div className="token-tray">
-          {pending.map((token) => (
+          {pending.map((token, position) => (
             <button
               key={token.id}
               type="button"
@@ -672,7 +728,13 @@ function BagEngine({ view, disabled, onDraw, onKeep }: EngineProps) {
                 token.kept && "held",
                 arrivals.has(token.id) && "motion-arrive",
               )}
-              style={delayStyle(staggerDelay(order.get(token.id) ?? 0))}
+              style={
+                {
+                  ...delayStyle(staggerDelay(order.get(token.id) ?? 0)),
+                  // How far this token was pulled from the bag's mouth.
+                  "--pull-index": position,
+                } as CSSProperties
+              }
               disabled={disabled}
               onClick={() => onKeep(token.id)}
               aria-label={`${token.kind} token in surge, ${
@@ -780,7 +842,8 @@ function SystemsEngine({
 }: EngineProps) {
   const engine = view.engine;
   const markers = engine.markers;
-  const arrivals = useArrivals(markers);
+  // The opening set of components drops in like every later one.
+  const arrivals = useArrivals(markers, true);
   const order = arrivalOrder(markers, arrivals);
   const built = engine.sockets
     .map((held, index) => (held ? `${index}` : ""))

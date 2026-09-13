@@ -21,11 +21,31 @@ npm run dev:web -- --host 0.0.0.0
 
 Open **http://localhost:5174**. The game server uses port **2568**, proxied through Vite's `/game` route. These ports avoid the older local services on 5173/2567. If a port is already occupied by another application, adjust both the server/proxy configuration and Playwright configuration together.
 
-Choose **Solo table** to explore all four seats, or **Cooperative table** to create a room and share its room code. Seat ownership is per browser tab, so four tabs on one machine can hold four different specialists, as can four separate devices. Reloading a tab reclaims its seat; closing it releases the claim. All four must join before spending capability. Reading and requesting help are available while assembling the team.
+Choose **Solo table** to explore all four seats in one tab, or **Cooperative table** to open a mission from its **master tab**.
+
+A cooperative table is opened for a number of people, not a number of characters: the mission is always four specialists, and the player count decides how many each person claims. Two players take two each, four take one each. Opening a table mints a **four-digit code**; anyone who types it into **Cooperative table** lands in the same lobby. The host watches the crew arrive and presses **Start the mission**, which is when the map opens.
+
+The master tab is the page a cooperative mission is opened from and the one that stays open beside it. It carries the mission brief and the master map, and it holds no seat: it never counts toward the four, never gates the round and is never forfeited. Its crew roster claims specialists, and claiming one opens that specialist's console in its own browser tab. So each player ends up with two tabs — the map they plan on, and the unit they run — and switches between them rather than between screens. The solo table keeps the single-tab switch instead.
+
+A master tab may draw on the map as a seat its own browser has claimed, because the console it spawns inherits its client key and the server can tell they are one person. A shared screen owns nothing and stays read-only. Seat ownership is per browser tab, so four tabs on one machine can hold four different specialists, as can four separate devices. Reloading a tab reclaims its seat; closing it releases the claim. All four must join before spending capability. Reading and requesting help are available while assembling the team.
+
+### Engines
+
+The Glitter Boy's dice are thrown across the tray at the start of each round and settle into routing order, low to high, because routing surge to a system browns out every loose die showing lower.
+
+The Techno-Wizard's components drop into the supply rail.
+
+The Juicer's tokens are pulled out of the bag and turn over as they land, so what a push found is the last thing to read.
+
+The Ley Line Walker deals from a ley network of 21 links rather than from a fixed list, so no two missions open on the same hand. Woven links return to the network and are shuffled back in when it runs out, and the count beside the hand is how much is left.
 
 ### Master Map
 
-**Master map** in the header opens a separate planning screen, or visit `?map=1`. It shows the outline of the undercroft and nothing else: no apparatus, no patrols, no units. The only things on it are marks somebody put there.
+Deploying opens the **master map**, not the cockpit. It is where the mission is laid out before anything is spent: the brief states what the team is there to do, and the planning window is already open. **Take your seat** moves on to your console, and the mission does not come back here on its own — **Master map** in the header reopens it at any time, or visit `?map=1`.
+
+The brief names four objectives. Only one is scored — 24 stabilization at the breach before the sixth round ends — and the other three are the difference between closing the breach cheaply and not closing it at all. Each one reads live off the same public state the cockpit shows, and each names the briefing mark that claims to say where it is; pointing at an objective lights that mark on the drawing.
+
+Below the brief, the map shows the outline of the undercroft and nothing else: no apparatus, no patrols, no units. The only things on it are marks somebody put there.
 
 The mission places its own, from the briefing. How tightly a mark draws is how sure planning was — a point, a small area, or a soft region. Whether it is _true_ is not shown. Walking a specialist up to a mark settles it: it is confirmed, or struck through because the briefing was wrong. One mark per match is wrong, and which one depends on the table.
 

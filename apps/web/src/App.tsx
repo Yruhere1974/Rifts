@@ -120,6 +120,13 @@ export function App() {
   const { view, seat } = game;
   const [link] = useState(joinLink);
   const [screen, setScreen] = useState<"console" | "map">(initialScreen);
+  /**
+   * True from deploying until the specialist takes their seat. The master map
+   * is the screen you land on, so the brief is read before anything is spent;
+   * it is client state rather than mission state, because a reload mid-mission
+   * should put you back at your console, not back at the briefing.
+   */
+  const [briefing, setBriefing] = useState(false);
   // Selecting an objective means selecting its apparatus: the middle of the
   // room is no longer a place anyone can work from.
   const [selected, setSelected] = useState(hexKey(apparatusOf("relay")));
@@ -134,8 +141,9 @@ export function App() {
   const [lobbyMode, setLobbyMode] = useState<"practice" | "team">(
     link ? "team" : "practice",
   );
-  const [lobbySeat, setLobbySeat] = useState<Seat>(link?.seat ?? "dice");
-  const [invite, setInvite] = useState(link?.room ?? "");
+  const [invite, setInvite] = useState("");
+  /** People at the table. Four specialists either way; this splits them. */
+  const [lobbyPlayers, setLobbyPlayers] = useState<2 | 4>(4);
   const [help, setHelp] = useState(false);
   const [artifact, setArtifact] = useState(false);
   const [history, setHistory] = useState(false);
@@ -376,6 +384,7 @@ export function App() {
               onClick={() => {
                 const next = screen === "map" ? "console" : "map";
                 setScreen(next);
+                if (next === "console") setBriefing(false);
                 const url = new URL(window.location.href);
                 if (next === "map") url.searchParams.set("map", "1");
                 else url.searchParams.delete("map");
@@ -412,7 +421,7 @@ export function App() {
         <Tutorial
           key={game.roomId}
           view={view}
-          active={tutorial}
+          active={tutorial && screen !== "map"}
           guidance={{
             selected: selectedSite ?? "",
             pieces: committed,
@@ -451,6 +460,17 @@ export function App() {
           }
           onErase={(mark) => game.send({ type: "erase", mark })}
           onPing={game.ping}
+          onTakeSeat={
+            briefing
+              ? () => {
+                  setBriefing(false);
+                  setScreen("console");
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete("map");
+                  window.history.replaceState(null, "", url);
+                }
+              : undefined
+          }
         />
       )}
       {/* Kept mounted rather than unmounted: remounting would tear down and
@@ -635,8 +655,8 @@ export function App() {
                 <Flag size={14} />
                 TEAM OBJECTIVE
               </div>
-              <h2>Close the breach.</h2>
-              <p>Keep Greyhaven standing.</p>
+              <h2>{playableMission.objective}</h2>
+              <p>{playableMission.stake}</p>
               <div className="objective-counter">
                 {/* Keyed on the pulse so a gain replays the surge even when the
                   counter is already mid-animation from the previous one. */}
@@ -695,7 +715,7 @@ export function App() {
               {/* One flash, never a loop: a permanent alarm would stop reading
                 as news long before instability actually reaches 12. */}
               <div
-                key={instabilityPulse}
+                key={`instability-${instabilityPulse}`}
                 className={`segmented-track danger${escalating ? " motion-flash" : ""}`}
               >
                 {Array.from({ length: 12 }, (_, i) => (
@@ -706,7 +726,7 @@ export function App() {
               {/* The world answered and re-issued its forecast; the block settles
                 back in so the escalation lands somewhere other than the log. */}
               <div
-                key={roundPulse}
+                key={`round-${roundPulse}`}
                 className={`world-response${roundTurned ? " motion-settle" : ""}`}
               >
                 <span>NEXT WORLD RESPONSE</span>
@@ -1235,26 +1255,32 @@ export function App() {
                 </div>
                 {lobbyMode === "team" && (
                   <div className="join-controls">
+                    <p className="join-note">
+                      The mission is always four specialists. How many people
+                      are running them decides how many each of you claims.
+                    </p>
+                    <div className="mode-toggle" role="group">
+                      {([2, 4] as const).map((count) => (
+                        <button
+                          key={count}
+                          className={lobbyPlayers === count ? "selected" : ""}
+                          onClick={() => setLobbyPlayers(count)}
+                        >
+                          {count} players / {4 / count} each
+                        </button>
+                      ))}
+                    </div>
                     <label>
-                      Your specialist
-                      <select
-                        value={lobbySeat}
-                        onChange={(e) => setLobbySeat(e.target.value as Seat)}
-                      >
-                        {seats.map((s) => (
-                          <option value={s} key={s}>
-                            {identities[s].title} / {identities[s].engine}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Room code
+                      Table code
                       <input
-                        aria-label="Room code"
-                        placeholder="Leave blank to create a table"
+                        aria-label="Table code"
+                        inputMode="numeric"
+                        maxLength={4}
+                        placeholder="Leave blank to open a table"
                         value={invite}
-                        onChange={(e) => setInvite(e.target.value)}
+                        onChange={(e) =>
+                          setInvite(e.target.value.replace(/\D/g, ""))
+                        }
                       />
                     </label>
                   </div>
@@ -1281,13 +1307,21 @@ export function App() {
                     setHelp(false);
                     setHistory(false);
                     setRulesOpen(false);
-                    void game.connect(
-                      lobbyMode,
-                      lobbyMode === "practice" ? "dice" : lobbySeat,
-                      lobbyMode === "team"
-                        ? invite.trim() || undefined
-                        : undefined,
-                    );
+                    // A cooperative mission opens on the master tab, which
+                    // holds no seat and spawns a console per specialist. Solo
+                    // keeps one tab and switches between map and console.
+                    if (lobbyMode === "team") {
+                      const code = invite.trim();
+                      window.location.href = code
+                        ? `/?master=1&code=${encodeURIComponent(code)}`
+                        : `/?master=1&players=${lobbyPlayers}`;
+                      return;
+                    }
+                    // Only the solo table reaches here, and it always opens
+                    // on the dice seat before switching freely.
+                    setScreen("map");
+                    setBriefing(true);
+                    void game.connect("practice", "dice", undefined);
                   }}
                 >
                   Deploy to Greyhaven

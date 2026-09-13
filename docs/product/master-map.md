@@ -2,13 +2,39 @@
 
 ## Status
 
-**The Surface is built.** Everything from "What It Is" to "Persistence And Erasure" is implemented and covered by tests. **Refining A Plan is still design**, and its "do not build yet" condition stands.
+**The Surface is built**, and so is **The Brief**. Everything from "The Brief" to "Persistence And Erasure" is implemented and covered by tests. **Refining A Plan is still design**, and its "do not build yet" condition stands.
 
 The concept document remains authoritative for the engine families, the universal interaction contract and the design constitution. `playable-slice.md` remains authoritative for the mission's rules and numbers. This document adds a surface and changes neither.
 
 It is deliberately split. **The Surface** is built and can be judged on its own. **Refining A Plan** is designed but withheld: it adds cost to a surface nobody has used yet, and building it before the first has been played would be guessing. The split exists so this lands in two clicks rather than one large maybe.
 
 One rule changed while building, and the document records the rule as built. Resolution reach was going to include the claim's spread; that made a vague claim resolve from _further away_ than a precise one, which is backwards, and it let a wide claim settle from the deployment anchors without anyone walking anywhere. See **Briefing Markers**.
+
+## The Master Tab
+
+A cooperative mission is opened from a master tab rather than from a seat, and that tab stays open for the whole mission. It holds no seat: it is excluded from `seated()`, so it never counts toward the four, never gates the start and is never forfeited when absent, and it receives `tableView()` like any other seatless client, so it can no more see a private engine than a shared screen can.
+
+Consoles are spawned from it, one browser tab per claimed specialist. This is the arrangement a real table wants — the plan in front of you and your engine beside it — and it replaces toggling between two screens in one tab with switching between two tabs.
+
+**The trap, and the mechanism.** A seat belongs to a browser tab, because the client key lives in `sessionStorage`, and the server treats a matching key on the same seat as a reconnect that evicts the older session. A second tab spawned from a page inherits that `sessionStorage`, so a naive "open my console in a new tab" would have had the new tab evict the tab that opened it. That is why the master tab holds no seat at all. It keeps the shared key deliberately: the spawned console claims the seat, and the master tab is then recognised as the same person, which is what lets it plan beside the unit it is running.
+
+**What it may do.** Only the verbs that spend nothing and leave nothing to reconcile — `annotate`, `erase` and pointing — and only as a seat its own key owns. A master tab can therefore never desync a round or commit capability twice. A shared screen owns no seat, so the same rule leaves it read-only with no separate check.
+
+The solo table keeps the single-tab switch between map and console, because one person does not need four tabs to look at one mission, and a phone joining by QR code has only one tab to give.
+
+## The Brief
+
+Deployment opens on this page rather than on the cockpit, because planning is the thing the map is for and it is worth doing before capability is spent. The brief states the mission in one line and then lays out its objectives.
+
+Four objectives, and only one of them is scored. That split is the point: closing the breach is the mission, and restoring the relay, decoding the timing and clearing the west gate are the difference between closing it cheaply and not closing it at all. A team that reads only the scored line walks straight at the breach and loses to instability.
+
+**The brief is live, not a document.** Every objective is answered by a signal already in public mission state — progress against the requirement, the shield, the decoded frequency, standing patrol strength — so the checklist stays true with nothing stored to keep it true. Which signal measures which objective is authored in `packages/content` beside the objective text, and `objectiveState()` in the rules package reads the signal. A new objective is a content edit.
+
+**Each objective names the mark that claims to locate it.** Pointing at an objective lights that briefing mark on the drawing, which is what makes the brief and the map one object rather than two panels sharing a screen. It also makes the brief honest about its own uncertainty: an objective is only as findable as the mark pointing at it, and a mark can be wrong. The scored objective is placed by an `inferred` mark, so even the thing the mission is judged on is somewhere planning only roughly knew.
+
+The page keeps its own heading for the marks themselves, **Briefing marks**, so the brief and the marks are not both called the briefing.
+
+Leaving the brief is a click and returning is a click, but the mission never puts you back here: a reload mid-mission returns you to your console, because the deployment brief is a moment rather than a mode. That is client state, not mission state.
 
 ## What It Is
 

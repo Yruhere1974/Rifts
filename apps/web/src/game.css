@@ -571,8 +571,23 @@ h3 {
   align-items: center;
   justify-content: flex-start;
   gap: 12px;
-  padding: 21px 0;
+  padding: 21px 16px 27px;
   flex-wrap: wrap;
+  /* A surface for the dice to land on, recessed so they sit in it rather than
+     float over the panel. Dice are thrown in from the left, so the throw is
+     clipped at the edge and they appear to arrive from off the table. */
+  background: radial-gradient(
+    120% 90% at 20% 0%,
+    #1b2a22 0%,
+    #141f1a 60%,
+    #111a16 100%
+  );
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 2px 10px #060b0899,
+    inset 0 -1px 0 #ffffff08;
+  overflow: hidden;
 }
 .die {
   position: relative;
@@ -878,6 +893,45 @@ select {
   padding: 14px 0 4px;
   min-height: 175px;
   overflow-x: auto;
+}
+/* The ley network: the pile the hand is dealt from, and the point every card
+   slides off. Stacked edges rather than a single panel, so a deck reads as a
+   deck; the count is the Walker's own information. */
+.ley-deck {
+  flex: 0 0 46px;
+  min-height: 159px;
+  align-self: flex-start;
+  border-radius: 5px;
+  border: 1px solid #6d6478;
+  background: repeating-linear-gradient(
+    135deg,
+    #2a2633,
+    #2a2633 4px,
+    #322d3c 4px,
+    #322d3c 8px
+  );
+  box-shadow:
+    3px 3px 0 -1px #262230,
+    4px 4px 0 -1px #6d6478,
+    6px 6px 0 -1px #262230,
+    7px 7px 0 -1px #6d6478;
+  margin-right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.ley-deck-count {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.5rem;
+  color: #cfc3dc;
+  line-height: 1;
+}
+.ley-deck-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: #8d8399;
 }
 .playing-card {
   flex: 1 0 77px;
@@ -2346,6 +2400,97 @@ select {
   animation-delay: var(--motion-delay, 0ms);
 }
 
+/* The Wizard's components are dropped into the rail rather than faded in: a
+   short vertical fall that accelerates, lands with a squash and rebounds once.
+   No travel and no rotation, which is what separates this from the other three
+   engines: dice are thrown and square up, cards slide off a deck and
+   straighten, tokens are pulled and turn over, components simply drop. Short
+   on purpose, because four of them land in sequence and a long fall each would
+   hold up a round that has not started. */
+@keyframes rifts-marker-drop {
+  0% {
+    opacity: 0;
+    translate: 0 -24px;
+    scale: 1;
+    /* Gravity accelerates; only the landing eases. */
+    animation-timing-function: cubic-bezier(0.45, 0, 0.9, 0.9);
+  }
+  30% {
+    opacity: 1;
+  }
+  55% {
+    translate: 0 0;
+    scale: 1.09 0.88;
+  }
+  76% {
+    translate: 0 -4px;
+    scale: 0.97 1.04;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+.placement-marker.motion-arrive {
+  animation: rifts-marker-drop var(--motion-settle) var(--ease-settle) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+/* Cards are dealt off the network rather than fading in: each one slides out
+   from the deck at the left, so a card landing further right has visibly
+   travelled further, and straightens as it lands. Independent properties, as
+   with the dice, so it composes with the lift on hover and selection. */
+@keyframes rifts-card-deal {
+  from {
+    opacity: 0;
+    translate: calc(var(--deal-index, 0) * -82px - 46px) -10px;
+    rotate: -9deg;
+    scale: 0.94;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+  }
+}
+.playing-card.motion-arrive {
+  animation: rifts-card-deal var(--motion-travel) var(--ease-enter) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+/* Dice arrive by being rolled rather than by fading in. Expressed through the
+   independent translate/rotate/scale properties so it composes with the
+   `transform` that .die:hover and .die.selected set, and with `backwards` fill
+   so the stagger delay holds the die off the table until its turn. The angle
+   resolving to zero is the die squaring up; the tray is sorted, so the row it
+   settles into is already in routing order. */
+@keyframes rifts-die-roll {
+  from {
+    opacity: 0;
+    translate: var(--throw-x, -110px) var(--throw-y, -18px);
+    rotate: var(--throw-rot, -220deg);
+    scale: 0.88;
+  }
+  35% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+  }
+}
+.die.motion-arrive {
+  animation: rifts-die-roll var(--motion-travel) var(--ease-enter) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
 /* Dice: a steady sheen marks the dice that can Engage. It never pulses; the
    point is reading the whole tray at a glance, not drawing the eye to one. */
 .die.can-engage::after {
@@ -2452,10 +2597,62 @@ select {
     infinite;
 }
 
-/* Bag: a drawn token is a single beat, not a dealt hand, so it lands quicker
-   than the trays that cascade. */
+/* Bag: a token is pulled out of the bag rather than appearing above the tray.
+   It comes from the bag's mouth at the left, rises as it clears it, and turns
+   over as it lands: the pinch at 62% is the token flipping face up, which is
+   why its kind is unreadable until then. That ordering is the same rule the
+   dice follow, where the face settles last and on the value the server
+   already drew. One beat rather than a cascade, because a push is one pull.
+
+   Independent properties throughout, so this composes with the lift that
+   .bag-token.selected sets on every token in a live surge. */
+@keyframes rifts-bag-pull {
+  0% {
+    opacity: 0;
+    translate: calc(var(--pull-index, 0) * -62px - 104px) 10px;
+    rotate: -16deg;
+    scale: 0.62;
+    animation-timing-function: cubic-bezier(0.35, 0.05, 0.35, 1);
+  }
+  30% {
+    opacity: 1;
+  }
+  55% {
+    translate: 0 -7px;
+    rotate: 6deg;
+    scale: 1.04;
+  }
+  /* The turn. Narrow rather than mirrored, so it reads as a flip on the spot
+     and never shows the label reversed. */
+  68% {
+    translate: 0 -3px;
+    rotate: 0deg;
+    scale: 0.1 1.06;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+    rotate: 0deg;
+    scale: 1;
+  }
+}
 .bag-token.motion-arrive {
-  animation-duration: var(--motion-quick);
+  animation: rifts-bag-pull var(--motion-travel) var(--ease-settle) backwards;
+  animation-delay: var(--motion-delay, 0ms);
+}
+/* The kind is what the flip reveals, so it is not readable before it. */
+@keyframes rifts-bag-face {
+  0%,
+  67% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.bag-token.motion-arrive > * {
+  animation: rifts-bag-face var(--motion-travel) linear backwards;
+  animation-delay: var(--motion-delay, 0ms);
 }
 
 /* Bag: the one place agitation is information. The live bust band tunes the
@@ -3079,6 +3276,20 @@ select {
   fill: #8d7c7c;
   text-decoration: line-through;
 }
+/* Lit while its objective is pointed at, so the brief and the drawing are one
+   object. Colour and weight only: nothing moves, because the map is read while
+   somebody is reading a list beside it. */
+.mm-brief-lit circle {
+  fill: #d9b26a14;
+  stroke: var(--accent);
+  stroke-dasharray: none;
+}
+.mm-brief-lit .mm-brief-pin {
+  fill: var(--accent);
+}
+.mm-brief-lit text {
+  fill: var(--accent);
+}
 .mm-report rect {
   fill: none;
   stroke: #8fa8bb;
@@ -3152,6 +3363,106 @@ select {
   letter-spacing: 0.06em;
   font-size: 0.82rem;
   color: var(--muted);
+}
+.master-map-brief {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.master-map-brief h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+.master-map-objective {
+  margin: 2px 0 0;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.45rem;
+  line-height: 1.1;
+}
+.master-map-stake {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+.master-map-objectives {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mm-objective {
+  border-left: 2px solid var(--line);
+  padding: 2px 0 2px 9px;
+  cursor: default;
+}
+.mm-objective:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+}
+/* The one the mission is scored on reads louder than the three that only make
+   it cheaper. */
+.mm-objective-scored {
+  border-left-color: var(--accent);
+}
+.mm-objective-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.mm-objective-head strong {
+  font-size: 0.9rem;
+  /* The title never gives way to the readout: a status can wrap, a name
+     broken across three lines cannot be read at a glance. */
+  flex: 0 0 auto;
+}
+.mm-objective-head span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-align: right;
+  flex: 0 1 auto;
+}
+.mm-objective-scored .mm-objective-head span {
+  color: var(--accent);
+}
+.mm-objective p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.mm-objective-mark {
+  font-style: italic;
+  opacity: 0.75;
+}
+.mm-objective-done {
+  border-left-color: #6f8f6a;
+}
+.mm-objective-done .mm-objective-head strong {
+  color: #9ec294;
+}
+.mm-objective-done .mm-objective-head span {
+  color: #9ec294;
+}
+.master-map-clock {
+  margin: 12px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.master-map-deploy {
+  margin-top: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #10190f;
+  font-weight: 600;
 }
 .master-map-compose {
   display: flex;
@@ -3237,6 +3548,21 @@ select {
     max-height: 46vh;
   }
 }
+/* Below this the drawing is too small to letter. It keeps its shape, its
+   spreads and its pins, and the briefing list beside it names every mark
+   anyway, so the text is dropped rather than rendered at two pixels. */
+@media (max-width: 620px) {
+  .master-map-canvas {
+    max-height: none;
+    min-height: 52vh;
+  }
+  .master-map-canvas text {
+    display: none;
+  }
+  .master-map-canvas .mm-leader {
+    display: none;
+  }
+}
 
 /* A class with its own display would otherwise beat the UA rule for [hidden]. */
 .cockpit[hidden] {
@@ -3261,4 +3587,113 @@ select {
 .mm-leader {
   stroke: #7d8f7d;
   stroke-width: 0.6;
+}
+
+/* The master tab's crew roster. One console per claimed specialist, spawned
+   into its own browser tab; this tab keeps the map and holds no seat. */
+.master-roster {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.master-roster h3 {
+  margin: 0 0 6px;
+}
+.master-room {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.master-roster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.master-crew {
+  border-left: 2px solid var(--line);
+  padding: 2px 0 6px 9px;
+}
+.master-crew-mine {
+  border-left-color: var(--accent);
+}
+.master-crew-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.master-crew-head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.master-crew p {
+  margin: 2px 0 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.master-crew button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+.master-screen .master-map {
+  padding-top: 0;
+}
+.join-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+/* The table lobby: the code to read out, who has landed, and the control that
+   begins the mission. It stands in front of the master map until the host
+   starts, because a table wants to see everybody arrive first. */
+.table-lobby {
+  max-width: 560px;
+  margin: 32px auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.table-lobby h2 {
+  margin: 0;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.6rem;
+}
+.lobby-code-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.lobby-code {
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 3.2rem;
+  line-height: 1;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+  /* Read aloud far more often than it is copied, so it is spaced for speech. */
+  text-indent: 0.22em;
+}
+.table-lobby .primary-button {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }

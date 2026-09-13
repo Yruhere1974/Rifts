@@ -65,12 +65,21 @@ export function usePrevious<T>(value: T): T | undefined {
  * from whole snapshots, so this is how a console knows a die was just rolled
  * or a token was just drawn rather than merely being on screen.
  */
-export function useArrivals(ids: readonly string[]): ReadonlySet<string> {
+export function useArrivals(
+  ids: readonly string[],
+  /**
+   * Count the very first set as arriving. Off by default, because most
+   * components are already laid out when you first see them and animating
+   * that reads as noise. The dice tray opts in: the first tray is the roll
+   * that opens the mission, and it is a real roll rather than a redisplay.
+   */
+  fromStart = false,
+): ReadonlySet<string> {
   const key = ids.join("|");
   const [tracked, setTracked] = useState(() => ({
     key,
-    seen: new Set<string>(ids),
-    fresh: new Set<string>(),
+    seen: fromStart ? new Set<string>() : new Set<string>(ids),
+    fresh: fromStart ? new Set<string>(ids) : new Set<string>(),
   }));
   if (tracked.key !== key) {
     const current = new Set(ids);

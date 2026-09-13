@@ -1,5 +1,7 @@
 import {
   briefingMarkers,
+  leyDeck,
+  missionObjectives,
   missionMap,
   playableMission,
   specialistFor,
@@ -133,6 +135,8 @@ export type MissionEngine = {
   /** Routings the platform can make this round. Always fewer than its dice. */
   capacity: number;
   hand: MissionCard[];
+  /** Links still in the ley network, so a Walker can count what is left. */
+  deckRemaining: number;
   /** How many cards a full hand holds. The draw never reaches it in one round. */
   handSize: number;
   /** Safe tokens from the current push. A hazard clears them; it never joins. */
@@ -246,6 +250,14 @@ export type MissionTableView = MissionPublicState & {
 export type MissionPrivateState = {
   engine: MissionEngine;
   bag: MissionToken[];
+  /**
+   * The Walker's ley network. Drawn from rather than dealt from a fixed list,
+   * so a round's hand is worth looking at; spent links go to `spent` and are
+   * reshuffled back when the deck runs dry, which is why weaving hard is what
+   * brings the reshuffle closer.
+   */
+  deck: MissionCard[];
+  spent: MissionCard[];
   intel: MissionIntel[];
   objective: string;
   artifact: boolean;
@@ -528,6 +540,59 @@ export function falseMarkerFor(seed: number): string | null {
  * still at one hex, and somebody has to stand beside it.
  */
 export const briefingReach = (size: number): number => size + 1;
+export type ObjectiveState = {
+  id: string;
+  done: boolean;
+  /** What the objective reads right now, short enough to sit on one line. */
+  readout: string;
+};
+/**
+ * How the authored objectives currently stand. Every one of them is already
+ * answered by public mission state, so the brief is a live checklist rather
+ * than a document, and nothing extra is stored to keep it true. The measure
+ * is authored in `packages/content`, so this reads a signal it understands
+ * rather than matching on objective ids.
+ */
+export function objectiveState(state: {
+  progress: number;
+  requiredProgress: number;
+  shield: boolean;
+  frequencyKnown: boolean;
+  threat: number;
+}): ObjectiveState[] {
+  return missionObjectives.map((objective) => {
+    const id = objective.id;
+    switch (objective.measure) {
+      case "progress":
+        return {
+          id,
+          done: state.progress >= state.requiredProgress,
+          readout: `${state.progress} / ${state.requiredProgress} stabilization`,
+        };
+      case "shield":
+        return {
+          id,
+          done: !state.shield,
+          readout: state.shield ? "Shield holding" : "Output doubled",
+        };
+      case "frequency":
+        return {
+          id,
+          done: state.frequencyKnown,
+          readout: state.frequencyKnown ? "Timing known" : "Timing unknown",
+        };
+      case "threat":
+        return {
+          id,
+          done: state.threat === 0,
+          readout:
+            state.threat === 0
+              ? "Gate clear"
+              : `Patrol strength ${state.threat}`,
+        };
+    }
+  });
+}
 /**
  * Walking into a claim settles it. A standing mark becomes confirmed, or
  * struck when it was this match's false one; a struck mark is kept and drawn
@@ -765,6 +830,28 @@ function shuffle<T>(state: MissionState, items: T[]): T[] {
   }
   return items;
 }
+/**
+ * Take `count` links off the top. A deck that has run out is rebuilt from
+ * what was spent and cut again, so a long mission never silently deals an
+ * empty hand; if both are empty the draw is simply short.
+ */
+function drawCards(
+  state: MissionState,
+  p: MissionPrivateState,
+  count: number,
+): MissionCard[] {
+  const drawn: MissionCard[] = [];
+  for (let i = 0; i < count; i++) {
+    if (p.deck.length === 0) {
+      if (p.spent.length === 0) break;
+      p.deck = shuffle(state, p.spent);
+      p.spent = [];
+    }
+    const next = p.deck.shift();
+    if (next) drawn.push(next);
+  }
+  return drawn;
+}
 function card(id: string, kind: string): MissionCard {
   return {
     id,
@@ -809,6 +896,7 @@ function refill(state: MissionState, seat: Seat): void {
     capacity: 0,
     hand: [],
     handSize: 0,
+    deckRemaining: 0,
     pending: [],
     bagRemaining: 0,
     bagHazards: 0,
@@ -835,16 +923,9 @@ function refill(state: MissionState, seat: Seat): void {
   if (seat === "dice")
     p.engine.capacity = routingCapacity(p.engine.dice.length);
   if (seat === "cards") {
-    const fresh = [
-      "channel",
-      "channel",
-      "spell",
-      "spell",
-      "reaction",
-      // Growth alternates Channel and Resonance so each tier adds a link.
-      ...(tier >= 1 ? ["channel"] : []),
-      ...(tier >= 2 ? ["spell"] : []),
-    ];
+    // Growth is hand size rather than named kinds: which links arrive is the
+    // deck's business now, and a bigger hand is what a tier actually buys.
+    const size = 5 + (tier >= 1 ? 1 : 0) + (tier >= 2 ? 1 : 0);
     // The hand is a slow battery, not a fresh deal. Nothing unspent is
     // discarded, and the draw is capped below the hand size, so a long chain
     // is paid for by the thin round that follows it: dump five for 15 and you
@@ -852,18 +933,11 @@ function refill(state: MissionState, seat: Seat): void {
     // it is a decision about tempo rather than about this round alone.
     // The opening hand is dealt whole; only later rounds are rationed, so a
     // Walker starts able to weave and then has to earn the next long chain.
-    p.engine.handSize = fresh.length;
-    const room = Math.max(0, fresh.length - carried.length);
-    const draw = dealt ? Math.min(room, handRefill(fresh.length)) : room;
-    p.engine.hand = [
-      ...carried,
-      ...shuffle(
-        state,
-        fresh
-          .slice(0, draw)
-          .map((kind, i) => card(`${prefix}-card-${i}`, kind)),
-      ),
-    ];
+    p.engine.handSize = size;
+    const room = Math.max(0, size - carried.length);
+    const draw = dealt ? Math.min(room, handRefill(size)) : room;
+    p.engine.hand = [...carried, ...drawCards(state, p, draw)];
+    p.engine.deckRemaining = p.deck.length;
   }
   if (seat === "bag") {
     p.bag = shuffle(
@@ -912,6 +986,7 @@ export function createMission(seed = 1): MissionState {
       capacity: 0,
       hand: [],
       handSize: 0,
+      deckRemaining: 0,
       pending: [],
       bagRemaining: 0,
       bagHazards: 0,
@@ -922,6 +997,8 @@ export function createMission(seed = 1): MissionState {
       primed: false,
     },
     bag: [],
+    deck: [],
+    spent: [],
     intel: [
       {
         status: perceptions[seat].rift.status,
@@ -992,6 +1069,12 @@ export function createMission(seed = 1): MissionState {
       systems: empty("systems"),
     },
   };
+  // Cut the ley network before the opening hand is drawn, so the first deal
+  // is already a draw rather than a fixed list.
+  state.private.cards.deck = shuffle(
+    state,
+    leyDeck.map((kind, i) => card(`ley-${i}`, kind)),
+  );
   for (const seat of missionSeats) refill(state, seat);
   // Deployment already stands in one claim, so the starting map is honest.
   resolveBriefing(state);
@@ -1731,6 +1814,8 @@ export function applyCommand(
   if (command.type === "act" && validation.event) {
     const used = new Set(command.pieces);
     e.dice = e.dice.filter((d) => !used.has(d.id));
+    const woven = e.hand.filter((c) => used.has(c.id));
+    if (woven.length > 0) p.spent.push(...woven);
     e.hand = e.hand.filter((c) => !used.has(c.id));
     e.pending = e.pending.filter((t) => !used.has(t.id));
     e.markers = e.markers.filter((m) => !used.has(m));
